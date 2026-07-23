@@ -234,7 +234,11 @@ def create_fabric_material(name, color_a, color_b, style):
     ramp = node(nodes, "ShaderNodeValToRGB", 40, 170)
     ramp.color_ramp.elements[0].color = (*color_a, 1)
     ramp.color_ramp.elements[1].color = (*color_b, 1)
-    source = pattern.outputs.get("Distance") or pattern.outputs.get("Color") or pattern.outputs["Fac"]
+    source = pattern.outputs.get("Distance")
+    if source is None:
+        source = pattern.outputs.get("Color")
+    if source is None:
+        source = pattern.outputs["Fac"]
     links.new(tex.outputs["Generated"], mapping.inputs["Vector"])
     links.new(mapping.outputs["Vector"], noise.inputs["Vector"])
     links.new(source, ramp.inputs["Fac"])
@@ -708,7 +712,6 @@ def create_game_ready_version(source_root, target_collection):
     sources = [
         obj for obj in bpy.context.scene.objects
         if obj.get("sofa_part") and obj.type in {'MESH', 'CURVE'}
-        and obj.name not in target_collection.objects
     ]
     for source in sources:
         copy = evaluated_mesh_copy(source, depsgraph)
@@ -821,7 +824,14 @@ def configure_scene():
     scene.render.image_settings.file_format = 'PNG'
     scene.render.film_transparent = False
     scene.render.image_settings.color_mode = 'RGBA'
-    scene.view_settings.look = 'AgX - Medium High Contrast'
+    try:
+        scene.view_settings.look = 'AgX - Medium High Contrast'
+    except TypeError:
+        # Some Blender builds expose the same look without the view prefix.
+        try:
+            scene.view_settings.look = 'Medium High Contrast'
+        except Exception:
+            pass
     scene.world.color = (0.025, 0.025, 0.025)
     scene.unit_settings.system = 'METRIC'
     scene.unit_settings.scale_length = 1.0
