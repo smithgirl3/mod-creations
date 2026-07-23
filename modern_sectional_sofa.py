@@ -126,6 +126,9 @@ def create_linen_material():
     mapping = node(nodes, "ShaderNodeMapping", -820, 0)
     mapping.inputs["Scale"].default_value = (8.0, 8.0, 8.0)
     noise = node(nodes, "ShaderNodeTexNoise", -590, 180, "Fiber Irregularity")
+    # Blender 5.2 defaults new Noise Texture nodes to 1D.  Explicitly use 3D
+    # so the Vector socket required by this procedural material is available.
+    noise.noise_dimensions = '3D'
     noise.inputs["Scale"].default_value = 7.0
     noise.inputs["Detail"].default_value = 7.0
     noise.inputs["Roughness"].default_value = 0.75
@@ -187,6 +190,7 @@ def create_fabric_material(name, color_a, color_b, style):
     tex = node(nodes, "ShaderNodeTexCoord", -900, 0)
     mapping = node(nodes, "ShaderNodeMapping", -720, 0)
     noise = node(nodes, "ShaderNodeTexNoise", -480, -180)
+    noise.noise_dimensions = '3D'
     noise.inputs["Scale"].default_value = 75 if style != "boucle" else 18
     noise.inputs["Detail"].default_value = 6
     noise.inputs["Roughness"].default_value = 0.8
@@ -268,6 +272,7 @@ def create_wood_material():
     wave.inputs["Distortion"].default_value = 7.0
     wave.inputs["Detail"].default_value = 5.0
     noise = node(nodes, "ShaderNodeTexNoise", -400, -150)
+    noise.noise_dimensions = '3D'
     noise.inputs["Scale"].default_value = 4.0
     noise.inputs["Detail"].default_value = 7.0
     mix = node(nodes, "ShaderNodeMixRGB", -150, 100)
@@ -920,6 +925,19 @@ if __name__ == "__main__":
     except Exception as exc:
         print("ERROR: Sectional sofa generation failed:", exc)
         traceback.print_exc()
+        # Make failures visible when Blender's system console is closed.
+        message = str(exc)
+
+        def draw_error(self, _context):
+            self.layout.label(text="Sofa generation failed.")
+            self.layout.label(text=message[:240])
+            self.layout.label(text="Open Window > Toggle System Console for details.")
+
+        try:
+            bpy.context.window_manager.popup_menu(
+                draw_error, title="Sectional Sofa Script Error", icon='ERROR')
+        except Exception:
+            pass
         # Leave Blender responsive and in Object Mode after a recoverable error.
         try:
             if bpy.context.object and bpy.context.object.mode != 'OBJECT':
