@@ -81,12 +81,37 @@ def set_smooth(obj):
             polygon.use_smooth = True
 
 
-def material_input(node, names):
+def named_socket(sockets, names, fallback_index=None):
+    """Find a node socket across Blender's 4.x/5.x naming changes."""
     for name in names:
-        socket = node.inputs.get(name)
+        socket = sockets.get(name)
         if socket is not None:
             return socket
-    return None
+    if fallback_index is not None and len(sockets) > fallback_index:
+        return sockets[fallback_index]
+    raise KeyError("None of the node sockets exist: " + ", ".join(names))
+
+
+def node_input(node, names, fallback_index=None):
+    return named_socket(node.inputs, names, fallback_index)
+
+
+def node_output(node, names, fallback_index=None):
+    return named_socket(node.outputs, names, fallback_index)
+
+
+def material_input(node, names):
+    return node_input(node, names)
+
+
+def factor_input(node):
+    """Blender 5.x renamed the common Fac socket to Factor."""
+    return node_input(node, ("Fac", "Factor"), 0)
+
+
+def scalar_output(node):
+    """Return a scalar texture/value output in Blender 4.x or 5.x."""
+    return node_output(node, ("Fac", "Factor", "Value", "Distance"), 0)
 
 
 def set_principled(principled, base_color, roughness=0.5,
@@ -166,10 +191,10 @@ def create_linen_material():
     links.new(wave_a.outputs["Color"], mix_fiber.inputs[0])
     links.new(wave_b.outputs["Color"], mix_fiber.inputs[1])
     links.new(mix_fiber.outputs[0], bump_mix.inputs[0])
-    links.new(noise.outputs["Fac"], bump_mix.inputs[1])
+    links.new(scalar_output(noise), bump_mix.inputs[1])
     links.new(bump_mix.outputs[0], bump.inputs["Height"])
-    links.new(noise.outputs["Fac"], ramp.inputs["Fac"])
-    links.new(noise.outputs["Fac"], rough_ramp.inputs["Value"])
+    links.new(scalar_output(noise), factor_input(ramp))
+    links.new(scalar_output(noise), rough_ramp.inputs["Value"])
     links.new(ramp.outputs["Color"], material_input(bsdf, ("Base Color",)))
     links.new(rough_ramp.outputs["Result"], material_input(bsdf, ("Roughness",)))
     links.new(bump.outputs["Normal"], material_input(bsdf, ("Normal",)))
@@ -238,15 +263,15 @@ def create_fabric_material(name, color_a, color_b, style):
     ramp = node(nodes, "ShaderNodeValToRGB", 40, 170)
     ramp.color_ramp.elements[0].color = (*color_a, 1)
     ramp.color_ramp.elements[1].color = (*color_b, 1)
-    source = pattern.outputs.get("Distance")
-    if source is None:
-        source = pattern.outputs.get("Color")
-    if source is None:
-        source = pattern.outputs["Fac"]
+    if style == "woven":
+        source = scalar_output(pattern)
+    else:
+        source = node_output(
+            pattern, ("Distance", "Value", "Fac", "Factor", "Color"), 0)
     links.new(tex.outputs["Generated"], mapping.inputs["Vector"])
     links.new(mapping.outputs["Vector"], noise.inputs["Vector"])
-    links.new(source, ramp.inputs["Fac"])
-    links.new(noise.outputs["Fac"], bump.inputs["Height"])
+    links.new(source, factor_input(ramp))
+    links.new(scalar_output(noise), bump.inputs["Height"])
     links.new(ramp.outputs["Color"], material_input(bsdf, ("Base Color",)))
     links.new(bump.outputs["Normal"], material_input(bsdf, ("Normal",)))
     links.new(bsdf.outputs[0], out.inputs["Surface"])
@@ -288,8 +313,8 @@ def create_wood_material():
     links.new(mapping.outputs["Vector"], wave.inputs["Vector"])
     links.new(mapping.outputs["Vector"], noise.inputs["Vector"])
     links.new(wave.outputs["Color"], mix.inputs[1])
-    links.new(noise.outputs["Fac"], mix.inputs[2])
-    links.new(mix.outputs["Color"], ramp.inputs["Fac"])
+    links.new(scalar_output(noise), mix.inputs[2])
+    links.new(mix.outputs["Color"], factor_input(ramp))
     links.new(mix.outputs["Color"], bump.inputs["Height"])
     links.new(ramp.outputs["Color"], material_input(bsdf, ("Base Color",)))
     links.new(bump.outputs["Normal"], material_input(bsdf, ("Normal",)))
