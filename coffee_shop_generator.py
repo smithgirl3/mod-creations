@@ -500,6 +500,23 @@ def join_objects(objects, name):
     return joined
 
 
+def rebase_origin_to_world(obj):
+    """
+    Move the object's origin to the world origin by baking its current
+    location into the mesh data.  Essential after join_objects() for props
+    that are assembled around (0,0,0) and then placed with `.location = ...`
+    — the join keeps the FIRST part's origin, which would otherwise offset
+    the whole prop when relocated.
+    """
+    if obj.type != 'MESH':
+        return
+    offset = Vector(obj.location)
+    if offset.length == 0.0:
+        return
+    obj.data.transform(Matrix.Translation(offset))
+    obj.location = (0.0, 0.0, 0.0)
+
+
 def set_parent_keep_transform(child, parent):
     """Parent while preserving world transform (clean hierarchies in Unity)."""
     child.parent = parent
@@ -2396,6 +2413,7 @@ class CoffeeShopBuilder:
                     rotation=(math.radians(tilt), 0, 0),
                     collection=self.furn_coll, material=wood))
         chair = join_objects(parts, name)
+        rebase_origin_to_world(chair)
         chair.location = (x, y, 0)
         chair.rotation_euler = (0, 0, z_rot)
         return chair
@@ -2424,6 +2442,7 @@ class CoffeeShopBuilder:
                                collection=self.furn_coll,
                                material=self.metal_blk))
         stool = join_objects(parts, name)
+        rebase_origin_to_world(stool)
         stool.location = (x, y, 0)
         return stool
 
@@ -2461,6 +2480,7 @@ class CoffeeShopBuilder:
                                       collection=self.furn_coll,
                                       material=self.wood_dark))
         chair = join_objects(parts, name)
+        rebase_origin_to_world(chair)
         chair.location = (x, y, 0)
         chair.rotation_euler = (0, 0, z_rot)
 
@@ -2509,6 +2529,7 @@ class CoffeeShopBuilder:
                                       collection=self.furn_coll,
                                       material=self.wood_dark))
         couch = join_objects(parts, name)
+        rebase_origin_to_world(couch)
         couch.location = (x, y, 0)
         couch.rotation_euler = (0, 0, z_rot)
 
@@ -2544,6 +2565,7 @@ class CoffeeShopBuilder:
             add_bevel(back, width=0.05, segments=3)
             bench_parts.append(back)
             bench = join_objects(bench_parts, f"{name}_Bench_{i}")
+            rebase_origin_to_world(bench)
             bench.location = (wall_x + 0.55, by + dy, 0)
         # Wall-mounted booth table.
         table = add_cube(f"{name}_Table", size=(0.9, 0.75, 0.045),
@@ -2615,10 +2637,11 @@ class CoffeeShopBuilder:
                         collection=self.bar_coll, material=steel)
         add_bevel(body, width=0.03, segments=3)
         parts.append(body)
-        # Brand plate glow.
+        # Brand plate glow on the customer-facing side (the working side
+        # with the group heads faces the barista aisle at -Y).
         add_plane("BAR_Espresso_Logo", size=(0.28, 0.10),
-                  location=(x, y - 0.281, z + 0.30),
-                  rotation=(math.radians(90), 0, 0),
+                  location=(x, y + 0.281, z + 0.30),
+                  rotation=(math.radians(90), 0, math.pi),
                   collection=self.bar_coll,
                   material=self.mat.emission("MAT_Espresso_Logo",
                                              color=(1.0, 0.55, 0.2),
@@ -2652,6 +2675,7 @@ class CoffeeShopBuilder:
                               location=(0, -0.18, -0.10),
                               collection=self.bar_coll, material=steel))
         machine = join_objects(parts, "BAR_EspressoMachine")
+        rebase_origin_to_world(machine)
         machine.location = (x, y, z + 0.10)
         # Warming cups on top of the machine.
         for i in range(4):
@@ -2690,6 +2714,7 @@ class CoffeeShopBuilder:
                                   collection=self.bar_coll,
                                   material=self.metal_blk))
         grinder = join_objects(parts, name)
+        rebase_origin_to_world(grinder)
         grinder.location = (x, y, z)
         randomize_transform(grinder, loc_jitter=0.01, rot_jitter_deg=6,
                             scale_jitter=0.0)
@@ -2709,6 +2734,7 @@ class CoffeeShopBuilder:
                               location=(0, -0.02, 0.015),
                               collection=self.bar_coll, material=steel))
         brewer = join_objects(parts, "BAR_Brewer")
+        rebase_origin_to_world(brewer)
         brewer.location = (x, y, z)
         # Glass carafe with coffee inside.
         carafe = add_cylinder("BAR_Carafe", radius=0.075, depth=0.18,
@@ -3016,7 +3042,10 @@ class CoffeeShopBuilder:
                       rotation=(math.radians(90), 0,
                                 bag.rotation_euler.z),
                       collection=self.bar_coll, material=label_mat)
-            self.rigid_active.append(bag)
+            # Only the counter bags become dynamic (the shelf bag has no
+            # passive support surface directly beneath it).
+            if bz < 2.0:
+                self.rigid_active.append(bag)
 
     # ==================================================================== #
     #  DECOR
@@ -3918,21 +3947,28 @@ class AnimationSystem:
 
     def setup_rigid_bodies(self):
         """
-        Rigid bodies: floor is passive; chairs / bean bags are active but
-        start deactivated so the scene stays composed until disturbed.
+        Rigid bodies: floor + counters are passive; chairs / bean bags are
+        active.  After configuration the actives' settling motion is BAKED
+        TO KEYFRAMES so the composition is deterministic at any frame
+        (live rigid-body caches misbehave on non-sequential timeline
+        evaluation, e.g. when jumping straight to a render frame).
         """
-        floor = bpy.data.objects.get("ARCH_Floor_Wood")
-        if floor is not None:
-            set_active(floor)
-            try:
-                bpy.ops.rigidbody.object_add(type='PASSIVE')
-                floor.rigid_body.friction = 0.9
-            except RuntimeError as exc:
-                warn(f"Passive rigid body failed on floor: {exc}")
-
-        for obj in self.shop.rigid_active:
+        passive_names = ("ARCH_Floor_Wood", "BAR_Counter_Body",
+                         "BAR_Counter_Top", "BAR_BackCounter_Body",
+                         "BAR_BackCounter_Top")
+        for name in passive_names:
+            obj = bpy.data.objects.get(name)
             if obj is None:
                 continue
+            set_active(obj)
+            try:
+                bpy.ops.rigidbody.object_add(type='PASSIVE')
+                obj.rigid_body.friction = 0.9
+            except RuntimeError as exc:
+                warn(f"Passive rigid body failed on {name}: {exc}")
+
+        actives = [o for o in self.shop.rigid_active if o is not None]
+        for obj in actives:
             set_active(obj)
             try:
                 bpy.ops.rigidbody.object_add(type='ACTIVE')
@@ -3947,7 +3983,38 @@ class AnimationSystem:
             rb.angular_damping = 0.7
             rb.collision_shape = 'CONVEX_HULL'
             rb.use_deactivation = True
-            rb.use_start_deactivated = True    # stay put until bumped
+
+        # Bake the settle (everything comes to rest well within 60 frames)
+        # to plain keyframes: stable renders at ANY frame + clean FBX
+        # animation.  Done manually via the evaluated depsgraph because
+        # bpy.ops.rigidbody.bake_to_keyframes needs UI context and fails
+        # in background/headless runs.
+        actives = [o for o in actives if o.rigid_body is not None]
+        if actives:
+            scene = bpy.context.scene
+            settle_end = FRAME_START + 60
+            sampled = {obj.name: [] for obj in actives}
+            for f in range(FRAME_START, settle_end + 1):
+                scene.frame_set(f)   # sequential stepping = valid sim cache
+                deps = bpy.context.evaluated_depsgraph_get()
+                for obj in actives:
+                    ev = obj.evaluated_get(deps)
+                    sampled[obj.name].append((f, ev.matrix_world.copy()))
+            # Remove the bodies from the sim, then key the sampled motion.
+            for obj in actives:
+                set_active(obj)
+                try:
+                    bpy.ops.rigidbody.object_remove()
+                except RuntimeError:
+                    pass
+                for f, mw in sampled[obj.name]:
+                    obj.matrix_world = mw
+                    obj.keyframe_insert("location", frame=f)
+                    obj.keyframe_insert("rotation_euler", frame=f)
+            scene.frame_set(FRAME_START)
+            log(f"Rigid-body settle baked to keyframes "
+                f"({len(actives)} objects, {settle_end - FRAME_START + 1} "
+                f"frames).")
 
     def setup_soft_bodies(self):
         """Goal-pinned soft bodies on every registered cushion."""
@@ -4098,12 +4165,14 @@ class CameraSystem:
         # (name, lens_mm, f-stop, cam_start, cam_end, target_start,
         #  target_end, use_focus_object)
         shots = [
-            ("CAM_01_CounterDolly", 50, 2.0,
-             (2.4, -0.9, 1.55), (-2.6, -0.7, 1.45),
-             (-2.0, -2.95, 1.35), (-2.0, -2.95, 1.35), True),
+            # Behind-the-bar dolly: group heads + portafilters in the
+            # foreground, warm seating and rainy glass bokeh beyond.
+            ("CAM_01_CounterDolly", 40, 2.2,
+             (1.6, -5.0, 1.6), (-4.2, -5.05, 1.4),
+             (-1.9, -2.7, 1.25), (-2.1, -2.8, 1.2), True),
             ("CAM_02_ReadingCorner", 35, 2.2,
-             (-3.2, -1.6, 1.7), (-4.8, -3.0, 1.25),
-             (-6.3, -4.3, 0.9), (-6.5, -4.6, 0.7), True),
+             (-5.5, -0.6, 1.75), (-5.8, -2.6, 1.2),
+             (-6.4, -4.3, 0.9), (-6.5, -4.6, 0.6), True),
             ("CAM_03_WindowRackFocus", 50, 1.8,
              (-2.4, 3.2, 1.45), (-4.0, 3.5, 1.40),
              (-3.6, 5.32, 1.15), (-3.6, 5.32, 1.15), False),
