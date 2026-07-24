@@ -89,29 +89,7 @@ class WeatherSystem:
         ps.name = "RainParticles"
         settings = ps.settings
         settings.name = "RainParticleSettings"
-        settings.type = "EMITTER"
-        settings.count = int(config.RAIN_PARTICLE_COUNT * self.intensity)
-        settings.frame_start = 1
-        settings.frame_end = config.CINEMATIC_FRAME_END
-        settings.lifetime = 40
-        settings.lifetime_random = 0.3
-        settings.emit_from = "FACE"
-        settings.normal_factor = -2.5
-        settings.factor_random = 0.2
-        settings.particle_size = 0.015
-        settings.size_random = 0.4
-        settings.brownian_factor = 0.05 * config.WIND_STRENGTH
-        try:
-            settings.effector_weights.gravity = 1.0
-            settings.effector_weights.wind = 1.0
-        except Exception:
-            pass
-        # Collision
-        settings.use_multiplier = True
-        try:
-            settings.collision_collection = None
-        except Exception:
-            pass
+        self._configure_rain_particle_settings(settings)
 
         # Droplet instance object
         drop = helpers.create_uv_sphere(
@@ -129,7 +107,10 @@ class WeatherSystem:
             settings.render_type = "OBJECT"
             settings.instance_object = drop
         except Exception:
-            settings.render_type = "HALO"
+            try:
+                settings.render_type = "HALO"
+            except Exception:
+                pass
 
         # Collision ground for rain
         ground = bpy.data.objects.get("EXT_Road") or bpy.data.objects.get("ARCH_Floor")
@@ -140,6 +121,48 @@ class WeatherSystem:
             except RuntimeError:
                 mod = ground.modifiers.new(name="Collision", type="COLLISION")
                 _ = mod
+
+    def _configure_rain_particle_settings(self, settings: bpy.types.ParticleSettings) -> None:
+        """
+        Apply Blender 5.2-compatible ParticleSettings for collision-enabled rain.
+        Uses hasattr guards so missing/renamed RNA attributes never abort the build.
+        """
+        self._set_particle_attr(settings, "type", "EMITTER")
+        self._set_particle_attr(settings, "count", int(config.RAIN_PARTICLE_COUNT * self.intensity))
+        self._set_particle_attr(settings, "frame_start", 1)
+        self._set_particle_attr(settings, "frame_end", config.CINEMATIC_FRAME_END)
+        self._set_particle_attr(settings, "lifetime", 40)
+        self._set_particle_attr(settings, "lifetime_random", 0.3)
+        self._set_particle_attr(settings, "emit_from", "FACE")
+        self._set_particle_attr(settings, "normal_factor", -2.5)
+        self._set_particle_attr(settings, "factor_random", 0.2)
+        self._set_particle_attr(settings, "particle_size", 0.015)
+        self._set_particle_attr(settings, "size_random", 0.4)
+        self._set_particle_attr(settings, "brownian_factor", 0.05 * config.WIND_STRENGTH)
+        self._set_particle_attr(settings, "physics_type", "NEWTON")
+
+        # Collision / deflection (Blender 5.2 RNA — not use_multiplier)
+        self._set_particle_attr(settings, "use_die_on_collision", True)
+        self._set_particle_attr(settings, "use_size_deflect", True)
+        self._set_particle_attr(settings, "collision_collection", None)
+
+        try:
+            if hasattr(settings, "effector_weights") and settings.effector_weights:
+                settings.effector_weights.gravity = 1.0
+                settings.effector_weights.wind = 1.0
+        except Exception as exc:
+            logger.debug("Effector weights skip: %s", exc)
+
+    @staticmethod
+    def _set_particle_attr(settings: bpy.types.ParticleSettings, name: str, value) -> None:
+        """Safely assign a ParticleSettings attribute if it exists in this Blender build."""
+        if not hasattr(settings, name):
+            logger.debug("ParticleSettings has no attribute %s (skipped)", name)
+            return
+        try:
+            setattr(settings, name, value)
+        except Exception as exc:
+            logger.debug("Could not set ParticleSettings.%s: %s", name, exc)
 
     def _create_mesh_rain_fallback(self) -> None:
         """Instanced streak meshes if particles unavailable."""
@@ -315,20 +338,21 @@ class WeatherSystem:
                 ps = emitter.particle_systems[-1]
                 ps.name = f"{name}_Particles"
                 s = ps.settings
-                s.count = int(80 * self.intensity)
-                s.lifetime = 60
-                s.frame_start = 1
-                s.frame_end = config.CINEMATIC_FRAME_END
-                s.particle_size = 0.08
-                s.size_random = 0.5
-                s.normal_factor = 0.15
-                s.factor_random = 0.3
-                s.brownian_factor = 0.4
+                self._set_particle_attr(s, "count", int(80 * self.intensity))
+                self._set_particle_attr(s, "lifetime", 60)
+                self._set_particle_attr(s, "frame_start", 1)
+                self._set_particle_attr(s, "frame_end", config.CINEMATIC_FRAME_END)
+                self._set_particle_attr(s, "particle_size", 0.08)
+                self._set_particle_attr(s, "size_random", 0.5)
+                self._set_particle_attr(s, "normal_factor", 0.15)
+                self._set_particle_attr(s, "factor_random", 0.3)
+                self._set_particle_attr(s, "brownian_factor", 0.4)
+                self._set_particle_attr(s, "render_type", "HALO")
                 try:
-                    s.effector_weights.gravity = -0.15  # rises
+                    if hasattr(s, "effector_weights") and s.effector_weights:
+                        s.effector_weights.gravity = -0.15  # rises
                 except Exception:
                     pass
-                s.render_type = "HALO"
             except RuntimeError:
                 # Mesh volume proxy
                 steam_mesh = helpers.create_uv_sphere(
