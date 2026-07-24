@@ -2160,9 +2160,11 @@ class EnvironmentBuilder:
                  size=(6.5, 0.12, 0.7),
                  location=(0, y_face + 0.06, self.H - 0.55),
                  collection=self.ext_coll, material=self.mat.metal_black())
+        # Rotated 180° in Z so the lettering faces (and reads from) the
+        # street side rather than the interior.
         add_text_mesh("EXT_Sign_Text", "NIMBUS  COFFEE",
                       location=(0, y_face + 0.14, self.H - 0.75),
-                      rotation=(math.radians(90), 0, 0),
+                      rotation=(math.radians(90), 0, math.pi),
                       size=0.42, extrude=0.03,
                       collection=self.ext_coll,
                       material=self.mat.emission("MAT_Sign_Warm",
@@ -4450,6 +4452,13 @@ class ExportManager:
             use_triangles=False,
             bake_anim=True,
             bake_anim_use_all_bones=False,
+            # Bake only each object's ASSIGNED action — the all-actions /
+            # NLA defaults re-bake every action against every animated
+            # object, which is combinatorially slow in a scene with
+            # hundreds of flicker/sway actions.
+            bake_anim_use_all_actions=False,
+            bake_anim_use_nla_strips=False,
+            bake_anim_step=2.0,               # 12 keys/s is plenty for sway
             bake_anim_simplify_factor=0.05,
             path_mode='COPY',                 # textures shipped with the FBX
             embed_textures=False,
