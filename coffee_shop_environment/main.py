@@ -72,6 +72,12 @@ def main(export: bool = True, clear_scene: bool = True) -> dict:
         logger.info("=" * 60)
         logger.info("Cozy Coffee Shop Environment Generator v1.0")
         logger.info("Target: Blender 5.2.0 | Unity export pipeline")
+        from . import weather_system as _weather_mod
+        logger.info(
+            "weather_system revision=%s path=%s",
+            getattr(_weather_mod, "PACKAGE_REVISION", "?"),
+            getattr(_weather_mod, "__file__", "?"),
+        )
         logger.info("=" * 60)
 
         # 1–2. Environment + materials

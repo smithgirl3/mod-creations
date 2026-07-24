@@ -18,6 +18,9 @@ from .material_manager import MaterialManager
 
 logger = logging.getLogger(__name__)
 
+# Printed at build time so Text Editor users can confirm the fixed module loaded
+PACKAGE_REVISION = "2026-07-24-no-use-multiplier"
+
 
 class WeatherSystem:
     """Heavy rainstorm atmosphere for the cozy coffee shop scene."""
@@ -29,6 +32,11 @@ class WeatherSystem:
         intensity: float = config.RAIN_INTENSITY,
         seed: int = config.RANDOM_SEED,
     ):
+        logger.info(
+            "WeatherSystem revision=%s file=%s",
+            PACKAGE_REVISION,
+            globals().get("__file__", "?"),
+        )
         self.mat = materials
         self.cols = collections
         self.intensity = max(0.0, min(1.0, intensity))
