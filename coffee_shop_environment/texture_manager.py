@@ -275,11 +275,24 @@ class TextureManager:
                 material.blend_method = "HASHED"
                 connected = True
             elif role == "AO":
-                # Multiply AO with base color if both present
-                mix = nodes.new("ShaderNodeMixRGB")
-                mix.blend_type = "MULTIPLY"
-                mix.inputs["Fac"].default_value = 0.7
-                mix.location = (x_offset + 280, y_offset + 400)
+                # Multiply AO with base color if both present (Blender 4+/5: MixRGB removed)
+                try:
+                    mix = nodes.new("ShaderNodeMix")
+                    mix.data_type = "RGBA"
+                    mix.blend_type = "MULTIPLY"
+                    try:
+                        mix.inputs["Factor"].default_value = 0.7
+                    except Exception:
+                        pass
+                except Exception:
+                    try:
+                        mix = nodes.new("ShaderNodeMixRGB")
+                        mix.blend_type = "MULTIPLY"
+                        mix.inputs["Fac"].default_value = 0.7
+                    except Exception:
+                        mix = None
+                if mix is not None:
+                    mix.location = (x_offset + 280, y_offset + 400)
                 # Leave unconnected unless Base Color tex exists; store for manual use
                 tex_node.label = "AO (multiply with Base Color)"
 
