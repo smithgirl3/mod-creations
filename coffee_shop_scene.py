@@ -487,7 +487,7 @@ def build_architecture(m, arch, storm):
 
 
 def make_chair(name, loc, angle, upholstery, m, coll):
-    root = empty(name, loc, coll)
+    root = empty(name, (loc[0], loc[1], 0), coll)
     seat = cube(f"{name} seat", (loc[0], loc[1], 1.03), (0.48, 0.47, 0.09), upholstery, 0.09, coll)
     back = cube(f"{name} curved back", (loc[0], loc[1] + 0.43, 1.52), (0.50, 0.08, 0.47), upholstery, 0.12, coll, (math.radians(-8), 0, 0))
     for obj in (seat, back):
