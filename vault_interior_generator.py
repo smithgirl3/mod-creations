@@ -15,18 +15,18 @@ from mathutils import Vector
 # Scene reset and collection helpers
 # ---------------------------------------------------------------------------
 
+# Objects are removed first; their generated data can then be cleared safely.
+for obj in list(bpy.data.objects):
+    bpy.data.objects.remove(obj, do_unlink=True)
 for datablocks in (
-    bpy.data.objects,
     bpy.data.meshes,
     bpy.data.curves,
     bpy.data.materials,
     bpy.data.cameras,
     bpy.data.lights,
 ):
-    # Objects are removed first; orphaned generated data is then safe to remove.
-    if datablocks == bpy.data.objects:
-        for block in list(datablocks):
-            datablocks.remove(block, do_unlink=True)
+    for block in list(datablocks):
+        datablocks.remove(block)
 
 for collection in list(bpy.data.collections):
     if collection.name != "Collection":
@@ -424,22 +424,20 @@ add_text("Atrium_Motto", "PREPARE  •  PRESERVE  •  PROSPER",
          (0, 19.66, 3.25), (math.pi / 2, 0, 0), 0.22, MAT["white"])
 
 # Rooms: bunk room west, office east, utility room north.
+# Their atrium-facing boundary is already supplied by the opened atrium wall.
 box("Bunk_Room_Floor", (-10.25, 11, -0.14), (6.5, 7.0, 0.28), MAT["concrete"])
-wall_with_opening("Bunk_East", "Y", -7.0, 7.5, 14.5, 3.5, 11, 2.4, 2.8)
 wall_with_opening("Bunk_West", "Y", -13.5, 7.5, 14.5, 3.5)
 wall_with_opening("Bunk_South", "X", 7.5, -13.5, -7, 3.5)
 wall_with_opening("Bunk_North", "X", 14.5, -13.5, -7, 3.5)
 box("Bunk_Room_Ceiling", (-10.25, 11, 3.58), (6.7, 7.2, 0.18), MAT["dark"])
 
 box("Office_Floor", (10.25, 11, -0.14), (6.5, 7.0, 0.28), MAT["concrete"])
-wall_with_opening("Office_West", "Y", 7.0, 7.5, 14.5, 3.5, 11, 2.4, 2.8)
 wall_with_opening("Office_East", "Y", 13.5, 7.5, 14.5, 3.5)
 wall_with_opening("Office_South", "X", 7.5, 7, 13.5, 3.5)
 wall_with_opening("Office_North", "X", 14.5, 7, 13.5, 3.5)
 box("Office_Ceiling", (10.25, 11, 3.58), (6.7, 7.2, 0.18), MAT["dark"])
 
 box("Utility_Floor", (0, 23.25, -0.14), (8.0, 6.5, 0.28), MAT["concrete"])
-wall_with_opening("Utility_South", "X", 20.0, -4, 4, 4.0, 0, 2.6, 2.9)
 wall_with_opening("Utility_North", "X", 26.5, -4, 4, 4.0)
 wall_with_opening("Utility_West", "Y", -4, 20, 26.5, 4.0)
 wall_with_opening("Utility_East", "Y", 4, 20, 26.5, 4.0)
