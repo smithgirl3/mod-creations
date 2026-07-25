@@ -782,7 +782,13 @@ class MaterialManager:
         """
         stem = os.path.splitext(filename.lower())[0]
         category_token = category.lower().replace(" ", "_")
-        stem = stem.replace(category_token, "")
+        # Strip only the conventional leading category prefix.  A global
+        # replace would turn "metal_metallic" into "_lic" and lose the map.
+        for separator in ("_", "-", " "):
+            prefix = category_token + separator
+            if stem.startswith(prefix):
+                stem = stem[len(prefix):]
+                break
         for map_type in ("normal", "displacement", "roughness",
                          "metallic", "albedo"):
             if any(keyword in stem for keyword in MAP_KEYWORDS[map_type]):
@@ -3803,19 +3809,29 @@ class LightingSystem:
         bg = new_node(nt, 'ShaderNodeBackground', (200, 0))
         bg.inputs['Strength'].default_value = 0.22
 
-        coord = new_node(nt, 'ShaderNodeTexCoord', (-600, 0))
+        coord = new_node(nt, 'ShaderNodeTexCoord', (-800, 0))
+        invert = new_node(nt, 'ShaderNodeVectorMath', (-600, 0))
+        invert.operation = 'SCALE'
+        invert.inputs['Scale'].default_value = -1.0
         sep = new_node(nt, 'ShaderNodeSeparateXYZ', (-400, 0))
         # World shaders have no mesh bounding box, so Generated coordinates
-        # are undefined here.  The world-direction normal gives a stable
-        # horizon-to-zenith gradient around every camera.
-        nt.links.new(coord.outputs['Normal'], sep.inputs['Vector'])
+        # are undefined here.  In Cycles, Normal is the incoming ray direction
+        # (-ray_D), hence the inversion before extracting its vertical axis.
+        nt.links.new(coord.outputs['Normal'], invert.inputs[0])
+        nt.links.new(invert.outputs['Vector'], sep.inputs['Vector'])
+        normalize = new_node(nt, 'ShaderNodeMapRange', (-300, -120))
+        normalize.inputs['From Min'].default_value = -1.0
+        normalize.inputs['From Max'].default_value = 1.0
+        normalize.inputs['To Min'].default_value = 0.0
+        normalize.inputs['To Max'].default_value = 1.0
+        nt.links.new(sep.outputs['Z'], normalize.inputs['Value'])
         ramp = new_node(nt, 'ShaderNodeValToRGB', (-200, 0))
         # Horizon: murky gray-blue.  Zenith: near-black storm cloud.
         ramp.color_ramp.elements[0].position = 0.45
         ramp.color_ramp.elements[0].color = (0.13, 0.16, 0.21, 1.0)
         ramp.color_ramp.elements[1].position = 0.75
         ramp.color_ramp.elements[1].color = (0.015, 0.02, 0.035, 1.0)
-        nt.links.new(sep.outputs['Z'], ramp.inputs['Fac'])
+        nt.links.new(normalize.outputs['Result'], ramp.inputs['Fac'])
         nt.links.new(ramp.outputs['Color'], bg.inputs['Color'])
         nt.links.new(bg.outputs['Background'], out.inputs['Surface'])
 
@@ -4543,14 +4559,22 @@ class ExportManager:
             path = os.path.join(tex_dir, os.path.splitext(safe)[0] + ".png")
             original_path = img.filepath_raw
             original_format = img.file_format
+            export_img = None
             try:
-                img.filepath_raw = path
-                img.file_format = 'PNG'
-                img.save()
+                # Save a temporary datablock so exporting does not repoint or
+                # clear the dirty state of the artist's source image.
+                export_img = img.copy()
+                export_img.filepath_raw = path
+                export_img.file_format = 'PNG'
+                export_img.save()
                 exported += 1
             except RuntimeError as exc:
                 warn(f"Could not export image {img.name}: {exc}")
             finally:
+                if export_img is not None:
+                    bpy.data.images.remove(export_img)
+                # Defensive restoration for API variants where copy() shares
+                # path metadata with the source datablock.
                 img.filepath_raw = original_path
                 img.file_format = original_format
         log(f"Exported {exported} texture(s) -> {tex_dir}")
