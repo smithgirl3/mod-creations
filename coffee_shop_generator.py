@@ -18,6 +18,7 @@ from __future__ import annotations
 import math
 import random
 import re
+import shutil
 import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -471,7 +472,6 @@ class MaterialManager:
             tex.location = (-240, -560)
             links.new(mapping.outputs["Vector"], tex.inputs["Vector"])
             links.new(tex.outputs["Color"], bump.inputs["Height"])
-            mat.surface_render_method = "DITHERED"
 
         self.materials[name] = mat
         return mat
@@ -1229,8 +1229,10 @@ class WeatherSystem:
                               (frame + 2, 9000), (frame + 4, 36000), (frame + 6, 0)):
                 light_data.energy = energy
                 light_data.keyframe_insert("energy", frame=f)
-            marker = bpy.context.scene.timeline_markers.new(f"THUNDER_SYNC_{frame}", frame=frame + 34)
-            marker["delay_seconds"] = 34 / self.c.fps
+            bpy.context.scene.timeline_markers.new(f"THUNDER_SYNC_{frame}", frame=frame + 34)
+            # TimelineMarker is not an ID-property owner in Blender 5; metadata
+            # therefore lives on the scene under a marker-specific key.
+            bpy.context.scene[f"thunder_delay_seconds_{frame}"] = 34 / self.c.fps
         for fc in animation_fcurves(light_data):
             for point in fc.keyframe_points:
                 point.interpolation = "CONSTANT"
@@ -1422,18 +1424,14 @@ class ExportManager:
                 duplicate.hide_render = True
                 duplicate.hide_viewport = True
         # Preserve explicit nomenclature even if a scene category had no candidates.
+        quality_names = {0: "HIGH", 1: "MEDIUM", 2: "LOW", 3: "VERY_LOW"}
         for level in range(4):
-            ensure_collection(f"LOD{level}", lod_root)
+            collection = ensure_collection(f"LOD{level}", lod_root)
+            collection["quality_tier"] = quality_names[level]
+            collection["unity_lod_screen_height"] = (0.6, 0.35, 0.15, 0.03)[level]
 
     def configure_render(self) -> None:
         scene = bpy.context.scene
-        try:
-            scene.render.engine = "BLENDER_EEVEE_NEXT" if "BLENDER_EEVEE_NEXT" in {
-                item.identifier for item in scene.bl_rna.properties["render"].fixed_type.properties[
-                    "engine"].enum_items
-            } else scene.render.engine
-        except Exception:
-            pass
         # Prefer Cycles as requested, but remain executable in builds compiled without it.
         try:
             scene.render.engine = "CYCLES"
@@ -1452,13 +1450,26 @@ class ExportManager:
                 scene.cycles.caustics_refractive = True
         except Exception as exc:
             print(f"[CoffeeShop] Cycles configuration fallback: {exc}")
+            try:
+                scene.render.engine = "BLENDER_EEVEE_NEXT"
+            except Exception:
+                print("[CoffeeShop] Keeping the current render engine.")
         scene.render.resolution_x = 2560
         scene.render.resolution_y = 1440
         scene.render.resolution_percentage = 100
         scene.render.image_settings.file_format = "OPEN_EXR"
         scene.render.image_settings.color_mode = "RGBA"
         scene.render.film_transparent = False
-        scene.view_settings.look = "AgX - Medium High Contrast"
+        try:
+            available_looks = {
+                item.identifier
+                for item in scene.view_settings.bl_rna.properties["look"].enum_items
+            }
+            desired_look = "AgX - Medium High Contrast"
+            if desired_look in available_looks:
+                scene.view_settings.look = desired_look
+        except Exception:
+            print("[CoffeeShop] Current color-management look retained.")
         scene.view_settings.exposure = .25
         scene.render.use_file_extension = True
         scene["render_profile"] = "Cycles_Photoreal_Production"
@@ -1474,7 +1485,7 @@ class ExportManager:
             bpy.ops.export_scene.fbx(
                 filepath=str(self.export_root / "RainyCoffeeShop_Unity.fbx"),
                 use_selection=False,
-                object_types={"MESH", "ARMATURE", "EMPTY", "CAMERA", "LIGHT"},
+                object_types={"MESH", "ARMATURE", "EMPTY", "CAMERA", "LIGHT", "OTHER"},
                 apply_unit_scale=True,
                 apply_scale_options="FBX_SCALE_UNITS",
                 use_space_transform=True,
@@ -1504,6 +1515,17 @@ class ExportManager:
             print("[CoffeeShop] GLB export complete.")
         except Exception as exc:
             print(f"[CoffeeShop] glTF exporter unavailable or failed: {exc}")
+        # Copy every file-backed texture into a deterministic Unity source folder.
+        texture_export = self.export_root / "Textures"
+        texture_export.mkdir(parents=True, exist_ok=True)
+        for image in bpy.data.images:
+            source = Path(bpy.path.abspath(image.filepath)) if image.filepath else None
+            if not source or not source.is_file():
+                continue
+            try:
+                shutil.copy2(source, texture_export / source.name)
+            except OSError as exc:
+                print(f"[CoffeeShop] Texture copy failed for {source}: {exc}")
         # Save a source blend and copy discovered images beside the exports.
         try:
             bpy.ops.wm.save_as_mainfile(filepath=str(self.export_root / "RainyCoffeeShop_Source.blend"),
