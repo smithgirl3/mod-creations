@@ -5,8 +5,8 @@ Run from Blender:
     blender --background --python coffee_shop_scene.py
 
 Or open Blender's Scripting workspace, load this file, and press Run Script.
-The script builds the scene, saves coffee_shop_scene.blend beside this file,
-and leaves frames 1-240 ready to render as an animation.
+The script builds the scene, saves it under ~/BlenderCoffeeShop, and leaves
+frames 1-240 ready to render as an animation.
 
 All geometry and textures are generated locally from deterministic procedural
 rules. No external models, images, add-ons, or network access are required.
@@ -26,6 +26,7 @@ SEED = 27041962
 FPS = 24
 FRAME_START = 1
 FRAME_END = 240
+OUTPUT_DIR = Path.home() / "BlenderCoffeeShop"
 random.seed(SEED)
 
 
@@ -954,6 +955,8 @@ def configure_camera(cameras):
 
 def configure_world_and_render():
     scene = bpy.context.scene
+    render_dir = OUTPUT_DIR / "renders"
+    render_dir.mkdir(parents=True, exist_ok=True)
     scene.frame_start = FRAME_START
     scene.frame_end = FRAME_END
     scene.render.fps = FPS
@@ -963,7 +966,7 @@ def configure_world_and_render():
     scene.render.resolution_percentage = 100
     scene.render.image_settings.file_format = "PNG"
     scene.render.image_settings.color_mode = "RGBA"
-    scene.render.filepath = str(Path("//renders/coffee_shop_"))
+    scene.render.filepath = str(render_dir / "coffee_shop_")
     scene.render.film_transparent = False
 
     # Use AgX for broad highlight latitude and a cinematic warm grade.
@@ -1042,7 +1045,8 @@ def main():
         "EEVEE Next is selected for practical animation rendering. For maximum realism, "
         "switch to Cycles, GPU compute, 256 samples, and enable denoising."
     )
-    output = Path(bpy.path.abspath("//coffee_shop_scene.blend"))
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    output = OUTPUT_DIR / "coffee_shop_scene.blend"
     bpy.ops.wm.save_as_mainfile(filepath=str(output))
     print(f"\nMidcentury Storm Cafe generated successfully: {output}")
     print(f"Objects: {len(bpy.data.objects)} | Materials: {len(bpy.data.materials)}")
