@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*.blend1
+*.blend2
+.DS_Store
+coffee_shop_environment/export/*.fbx
+coffee_shop_environment/export/*.glb
+coffee_shop_environment/export/*.blend
+coffee_shop_environment/export/textures/**
+!coffee_shop_environment/export/.gitkeep
+*.log
+.venv/
