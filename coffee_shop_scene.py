@@ -989,8 +989,8 @@ def configure_world_and_render():
     nodes, links = comp_tree.nodes, comp_tree.links
     render = nodes.new("CompositorNodeRLayers")
     glare = nodes.new("CompositorNodeGlare")
-    set_input(glare, ("Type",), "FOG_GLOW")
-    set_input(glare, ("Quality",), "HIGH")
+    set_input(glare, ("Type",), "Fog Glow")
+    set_input(glare, ("Quality",), "High")
     set_input(glare, ("Highlights Threshold", "Threshold"), 1.1)
     set_input(glare, ("Size",), 0.45)
     lens = nodes.new("CompositorNodeLensdist")
