@@ -83,7 +83,7 @@ CONFIG = {
     "body": {
         "radius": 0.016,
         "scale": (1.15, 0.95, 1.35),
-        "location_z": 0.038,
+        "location_z": 0.034,      # lowered so legs meet the base
         "subdiv": 2,
     },
 
@@ -97,8 +97,9 @@ CONFIG = {
     },
     "leg": {
         "radius": 0.0075,
-        "scale": (1.0, 1.05, 0.85),
-        "z": 0.016,
+        "scale": (1.0, 1.05, 0.90),
+        # Bottom of the scaled sphere should rest on the base top (~0.0035 m).
+        "z": 0.0105,
         "x_offset": 0.010,
         "y": 0.004,
     },
