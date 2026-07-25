@@ -869,7 +869,7 @@ wn.clear()
 out = wn.new("ShaderNodeOutputWorld")
 bg = wn.new("ShaderNodeBackground")
 sky = wn.new("ShaderNodeTexSky")
-sky.sky_type = "NISHITA"
+sky.sky_type = "MULTIPLE_SCATTERING"
 sky.sun_elevation = math.radians(11)
 sky.sun_rotation = math.radians(225)
 sky.altitude = 0.2
