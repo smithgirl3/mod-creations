@@ -14,6 +14,12 @@ The script builds the scene, configures Cycles, creates a 30-second animation,
 generates LOD collections, and writes FBX, GLB, and a source `.blend` to
 `//UnityExport/`.
 
+If the current `.blend` has not been saved yet, Blender cannot resolve `//`
+against a project folder. The generator then writes to
+`<user profile>/BlenderCoffeeShop/UnityExport/` and prints the exact location
+in Blender's system console. If that location is unavailable, it safely falls
+back to the operating system's temporary directory.
+
 Artist controls are in `CoffeeShopConfig` near the top of the script. Set
 `auto_export=False` while iterating if generation should stop before export.
 

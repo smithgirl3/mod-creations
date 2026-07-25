@@ -19,8 +19,9 @@ import math
 import random
 import re
 import shutil
+import tempfile
 import traceback
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
@@ -61,6 +62,48 @@ RNG = random.Random(CFG.seed)
 # ---------------------------------------------------------------------------
 # Low-level helpers
 # ---------------------------------------------------------------------------
+
+def resolve_project_directory(configured_path: str, fallback_name: str) -> Path:
+    """Resolve Blender paths safely, including when the current file is unsaved.
+
+    Blender's ``//`` prefix means "beside the current .blend".  With an unsaved
+    file on Windows, however, it can resolve against Blender's protected install
+    directory.  Unsaved projects therefore use a folder in the user's profile.
+    """
+    if configured_path.startswith("//") and not bpy.data.filepath:
+        relative = configured_path[2:].strip("/\\") or fallback_name
+        return Path.home() / "BlenderCoffeeShop" / Path(relative)
+    return Path(bpy.path.abspath(configured_path)).expanduser()
+
+
+def ensure_writable_directory(preferred: Path, fallback_name: str) -> Path:
+    """Create and verify an output folder, falling back to the OS temp folder."""
+    candidates = (
+        preferred,
+        Path.home() / "BlenderCoffeeShop" / fallback_name,
+        Path(tempfile.gettempdir()) / "BlenderCoffeeShop" / fallback_name,
+    )
+    errors = []
+    visited = set()
+    for candidate in candidates:
+        normalized = str(candidate.resolve(strict=False))
+        if normalized in visited:
+            continue
+        visited.add(normalized)
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            probe = candidate / ".coffee_shop_write_test"
+            probe.write_text("writable", encoding="utf-8")
+            probe.unlink()
+            if candidate != preferred:
+                print(f"[CoffeeShop] Using writable fallback directory: {candidate}")
+            return candidate
+        except OSError as exc:
+            errors.append(f"{candidate}: {exc}")
+    raise PermissionError(
+        "No writable project output directory was found:\n" + "\n".join(errors)
+    )
+
 
 def ensure_collection(name: str, parent: Optional[bpy.types.Collection] = None) -> bpy.types.Collection:
     """Return a named collection and link it exactly once."""
@@ -307,7 +350,8 @@ class MaterialManager:
     def __init__(self, config: CoffeeShopConfig):
         self.config = config
         self.materials: Dict[str, bpy.types.Material] = {}
-        self.texture_root = Path(bpy.path.abspath(config.texture_root))
+        preferred = resolve_project_directory(config.texture_root, "Textures")
+        self.texture_root = ensure_writable_directory(preferred, "Textures")
         self._create_texture_tree()
 
     def _create_texture_tree(self) -> None:
@@ -1396,7 +1440,8 @@ class ExportManager:
 
     def __init__(self, config: CoffeeShopConfig):
         self.c = config
-        self.export_root = Path(bpy.path.abspath(config.export_root))
+        preferred = resolve_project_directory(config.export_root, "UnityExport")
+        self.export_root = ensure_writable_directory(preferred, "UnityExport")
 
     def generate_lods(self) -> None:
         """Generate linked LOD1-3 meshes for marked game assets."""
@@ -1476,8 +1521,11 @@ class ExportManager:
         scene["texture_profiles"] = "2K,4K,8K"
 
     def export(self) -> None:
-        self.export_root.mkdir(parents=True, exist_ok=True)
+        # Recheck at export time in case a removable/network destination vanished.
+        self.export_root = ensure_writable_directory(self.export_root, "UnityExport")
         scene = bpy.context.scene
+        scene["unity_export_directory"] = str(self.export_root)
+        print(f"[CoffeeShop] Unity exports will be written to: {self.export_root}")
         original_frame = scene.frame_current
         scene.frame_set(1)
         # Exporters can be absent in custom Blender builds; each format is independent.
