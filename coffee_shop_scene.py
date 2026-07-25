@@ -977,22 +977,32 @@ def configure_world_and_render():
     bg.inputs["Color"].default_value = (0.006, 0.012, 0.025, 1)
     bg.inputs["Strength"].default_value = 0.16
 
-    scene.use_nodes = True
-    nodes, links = scene.node_tree.nodes, scene.node_tree.links
-    nodes.clear()
+    # Blender 5.x compositor trees are standalone node groups. Scene.node_tree
+    # and the Composite node were removed in Blender 5.0.
+    previous_tree = scene.compositing_node_group
+    comp_tree = bpy.data.node_groups.new("Cinematic Cafe Compositor", "CompositorNodeTree")
+    scene.compositing_node_group = comp_tree
+    scene.render.use_compositing = True
+    if previous_tree and previous_tree.users == 0:
+        bpy.data.node_groups.remove(previous_tree)
+
+    nodes, links = comp_tree.nodes, comp_tree.links
     render = nodes.new("CompositorNodeRLayers")
     glare = nodes.new("CompositorNodeGlare")
-    glare.glare_type = "FOG_GLOW"
-    glare.quality = "HIGH"
-    glare.threshold = 1.1
-    glare.size = 6
+    set_input(glare, ("Type",), "FOG_GLOW")
+    set_input(glare, ("Quality",), "HIGH")
+    set_input(glare, ("Highlights Threshold", "Threshold"), 1.1)
+    set_input(glare, ("Size",), 0.45)
     lens = nodes.new("CompositorNodeLensdist")
     lens.inputs["Distortion"].default_value = 0.012
     lens.inputs["Dispersion"].default_value = 0.004
-    comp = nodes.new("CompositorNodeComposite")
+    comp_tree.interface.new_socket(
+        name="Image", in_out="OUTPUT", socket_type="NodeSocketColor"
+    )
+    output = nodes.new("NodeGroupOutput")
     links.new(render.outputs["Image"], glare.inputs["Image"])
     links.new(glare.outputs["Image"], lens.inputs["Image"])
-    links.new(lens.outputs["Image"], comp.inputs["Image"])
+    links.new(lens.outputs["Image"], output.inputs["Image"])
 
 
 def organize_scene():
