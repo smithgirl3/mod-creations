@@ -787,6 +787,17 @@ def make_person(
             parent_keep_world(part, control)
             arm_parts.append(part)
 
+    if action == "sip":
+        held_cup = coffee_cup(
+            f"Patron {index:02d} held cup",
+            (hand_r[0], hand_r[1] - 0.035, hand_r[2] + 0.11),
+            m["white"] if index % 2 else m["green_ceramic"],
+            m,
+            people,
+            0.58,
+        )
+        parent_keep_world(held_cup, shoulder_r)
+
     for part in (torso, neck, head_pivot, shoulder_l, shoulder_r):
         parent_keep_world(part, root)
 
