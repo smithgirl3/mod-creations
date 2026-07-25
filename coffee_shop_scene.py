@@ -215,6 +215,11 @@ def parent_keep_world(obj, parent):
 
 
 def empty(name, loc, coll):
+    loc = tuple(loc)
+    if len(loc) == 2:
+        loc = (*loc, 0.0)
+    if len(loc) != 3:
+        raise ValueError(f"{name} requires a 2D or 3D location, got {len(loc)} values")
     obj = bpy.data.objects.new(name, None)
     obj.empty_display_type = "PLAIN_AXES"
     obj.empty_display_size = 0.12
