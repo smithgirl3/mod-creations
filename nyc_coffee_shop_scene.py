@@ -13,6 +13,7 @@ bodies, animated vegetation, puddle ripples, and a loopable 10-second shot.
 import bpy
 import math
 import random
+from bpy_extras import anim_utils
 from mathutils import Vector
 
 
@@ -197,13 +198,17 @@ def aim(obj, target):
 
 
 def linear_cycles(obj, data_path="location"):
-    if not obj.animation_data or not obj.animation_data.action:
+    anim_data = obj.animation_data
+    if anim_data is None or anim_data.action is None:
         return
-    for fc in obj.animation_data.action.fcurves:
+    channelbag = anim_utils.animdata_get_channelbag_for_assigned_slot(anim_data)
+    if channelbag is None:
+        return
+    for fc in channelbag.fcurves:
         if fc.data_path == data_path:
             for key in fc.keyframe_points:
                 key.interpolation = "LINEAR"
-            fc.modifiers.new("CYCLES")
+            fc.modifiers.new(type="CYCLES")
 
 
 def principled_material(
