@@ -15,6 +15,7 @@ import math
 import random
 from bpy_extras import anim_utils
 from mathutils import Vector
+from pathlib import Path
 
 
 # ---------------------------------------------------------------------------
@@ -24,6 +25,8 @@ from mathutils import Vector
 SEED = 7291
 random.seed(SEED)
 START, END, FPS = 1, 240, 24
+OUTPUT_DIR = Path.home() / "Blender_Renders"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 bpy.ops.object.select_all(action="SELECT")
 bpy.ops.object.delete(use_global=False)
@@ -48,7 +51,7 @@ scene.render.resolution_percentage = 100
 scene.render.image_settings.media_type = "VIDEO"
 scene.render.ffmpeg.format = "MPEG4"
 scene.render.ffmpeg.codec = "H264"
-scene.render.filepath = "//rainy_nyc_coffee_corner.mp4"
+scene.render.filepath = str(OUTPUT_DIR / "rainy_nyc_coffee_corner.mp4")
 scene.render.film_transparent = False
 
 scene.render.engine = "BLENDER_EEVEE"
@@ -968,7 +971,7 @@ scene["physics_baked_range"] = f"{START}-{END}"
 scene["soft_body_caches_baked"] = baked_caches
 scene["generator_seed"] = SEED
 
-bpy.ops.wm.save_as_mainfile(filepath="//rainy_nyc_coffee_corner.blend")
+bpy.ops.wm.save_as_mainfile(filepath=str(OUTPUT_DIR / "rainy_nyc_coffee_corner.blend"))
 print(
     "NYC coffee shop scene complete:",
     len(bpy.data.objects), "objects,",
