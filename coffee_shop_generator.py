@@ -246,10 +246,14 @@ def clear_scene():
     for marker in list(scene.timeline_markers):
         scene.timeline_markers.remove(marker)
 
-    # Purge orphaned datablocks (meshes, materials, images, ...).
+    # Purge generated datablocks.  Textures/actions/worlds need explicit
+    # handling because repeated Text Editor runs can otherwise retain users
+    # or animation data even after every object has been removed.
+    scene.world = None
     for block_list in (bpy.data.meshes, bpy.data.materials, bpy.data.images,
                        bpy.data.lights, bpy.data.cameras, bpy.data.curves,
                        bpy.data.particles, bpy.data.node_groups,
+                       bpy.data.textures, bpy.data.actions, bpy.data.worlds,
                        bpy.data.texts if False else []):
         for block in list(block_list):
             if block.users == 0:
@@ -262,6 +266,9 @@ def clear_scene():
     scene.frame_start = FRAME_START
     scene.frame_end = FRAME_END
     scene.frame_set(FRAME_START)
+    BUILD_REPORT["stages"].clear()
+    BUILD_REPORT["warnings"].clear()
+    BUILD_REPORT["objects"] = 0
     log("Scene cleared.")
 
 
@@ -271,10 +278,13 @@ def project_root():
     Prefers the folder of the saved .blend; falls back to the system temp
     dir so the script also works in an unsaved file.
     """
-    blend_dir = bpy.path.abspath("//")
-    if blend_dir and os.path.isdir(blend_dir):
-        return blend_dir
-    return os.path.join(tempfile.gettempdir(), "coffee_shop_project")
+    if bpy.data.filepath:
+        blend_dir = os.path.dirname(os.path.abspath(bpy.data.filepath))
+        if os.path.isdir(blend_dir):
+            return blend_dir
+    fallback = os.path.join(tempfile.gettempdir(), "coffee_shop_project")
+    os.makedirs(fallback, exist_ok=True)
+    return fallback
 
 
 # ============================================================================
@@ -677,7 +687,7 @@ MAP_KEYWORDS = {
     "albedo":       ["albedo", "basecolor", "base_color", "diffuse", "color", "col"],
     "roughness":    ["roughness", "rough", "rgh"],
     "metallic":     ["metallic", "metalness", "metal", "mtl"],
-    "normal":       ["normal", "nrm", "nor", "normalgl"],
+    "normal":       ["normal", "nrm", "nor", "normalgl", "normaldx"],
     "displacement": ["displacement", "height", "disp", "bump"],
 }
 
@@ -754,15 +764,30 @@ class MaterialManager:
                 for fname in sorted(os.listdir(directory)):
                     if not fname.lower().endswith(IMAGE_EXTENSIONS):
                         continue
-                    lower = fname.lower()
-                    for map_type, keywords in MAP_KEYWORDS.items():
-                        if map_type in found:
-                            continue
-                        if any(kw in lower for kw in keywords):
-                            found[map_type] = os.path.join(directory, fname)
+                    map_type = self._classify_texture_map(fname, category)
+                    if map_type and map_type not in found:
+                        found[map_type] = os.path.join(directory, fname)
             if found:
                 self.texture_index[category] = found
                 log(f"Discovered {len(found)} texture map(s) for '{category}'")
+
+    @staticmethod
+    def _classify_texture_map(filename, category):
+        """
+        Classify one texture without mistaking its category for its map type.
+
+        For example, ``metal/metal_normal.png`` must be a normal map rather
+        than a metallic map merely because the word "metal" appears first.
+        Specific data-map terms are deliberately checked before albedo.
+        """
+        stem = os.path.splitext(filename.lower())[0]
+        category_token = category.lower().replace(" ", "_")
+        stem = stem.replace(category_token, "")
+        for map_type in ("normal", "displacement", "roughness",
+                         "metallic", "albedo"):
+            if any(keyword in stem for keyword in MAP_KEYWORDS[map_type]):
+                return map_type
+        return None
 
     # Dedicated loader entry points per AI source (identical mechanics —
     # they only constrain which subfolder is searched).
@@ -786,7 +811,10 @@ class MaterialManager:
         keywords = MAP_KEYWORDS.get(map_type, [map_type])
         for fname in sorted(os.listdir(directory)):
             lower = fname.lower()
-            if lower.endswith(IMAGE_EXTENSIONS) and any(k in lower for k in keywords):
+            classified = self._classify_texture_map(fname, category)
+            if (lower.endswith(IMAGE_EXTENSIONS) and
+                    (classified == map_type or
+                     (classified is None and any(k in lower for k in keywords)))):
                 return self._load_image(os.path.join(directory, fname))
         return None
 
@@ -1159,6 +1187,7 @@ class MaterialManager:
         set_input(bsdf, 'Roughness', 0.02)
         set_input(bsdf, ['Transmission Weight', 'Transmission'], 1.0)
         set_input(bsdf, 'IOR', 1.45)
+        self.attach_texture_maps(mat, "glass")
         return mat
 
     def glass_rainy(self):
@@ -1230,6 +1259,7 @@ class MaterialManager:
         nt.links.new(cond_rng.outputs['Result'], cond_mix.inputs[0])
         nt.links.new(cond_noise.outputs['Fac'], cond_mix.inputs[1])
         nt.links.new(cond_mix.outputs['Value'], bsdf.inputs['Roughness'])
+        self.attach_texture_maps(mat, "glass")
         return mat
 
     def rain_droplet(self):
@@ -1319,7 +1349,8 @@ class MaterialManager:
 
     def paper(self, name="MAT_Paper", color=(0.85, 0.80, 0.72, 1.0)):
         """Kraft paper: menus, napkins, coffee bags, book pages."""
-        return self.create_pbr(name, base_color=color, roughness=0.95)
+        return self.create_pbr(name, base_color=color, roughness=0.95,
+                               texture_category="paper")
 
     def chalkboard(self):
         """Dark matte chalkboard for the menu boards."""
@@ -3774,7 +3805,10 @@ class LightingSystem:
 
         coord = new_node(nt, 'ShaderNodeTexCoord', (-600, 0))
         sep = new_node(nt, 'ShaderNodeSeparateXYZ', (-400, 0))
-        nt.links.new(coord.outputs['Generated'], sep.inputs['Vector'])
+        # World shaders have no mesh bounding box, so Generated coordinates
+        # are undefined here.  The world-direction normal gives a stable
+        # horizon-to-zenith gradient around every camera.
+        nt.links.new(coord.outputs['Normal'], sep.inputs['Vector'])
         ramp = new_node(nt, 'ShaderNodeValToRGB', (-200, 0))
         # Horizon: murky gray-blue.  Zenith: near-black storm cloud.
         ramp.color_ramp.elements[0].position = 0.45
@@ -3937,13 +3971,13 @@ class AnimationSystem:
             # Keep the Solidify AFTER Cloth so thickness follows the sim.
             solid = panel.modifiers.get("Solidify")
             if solid:
-                with bpy.context.temp_override(object=panel):
-                    try:
-                        bpy.ops.object.modifier_move_to_index(
-                            modifier="Solidify",
-                            index=len(panel.modifiers) - 1)
-                    except Exception:
-                        pass
+                try:
+                    panel.modifiers.move(
+                        panel.modifiers.find(solid.name),
+                        len(panel.modifiers) - 1)
+                except (AttributeError, RuntimeError, ValueError) as exc:
+                    warn(f"Could not reorder curtain modifiers on "
+                         f"{panel.name}: {exc}")
 
     def setup_rigid_bodies(self):
         """
@@ -4022,7 +4056,7 @@ class AnimationSystem:
             sb = cushion.modifiers.new("Softbody", 'SOFT_BODY')
             st = sb.settings
             st.use_goal = True
-            st.goal_default = 0.85             # mostly holds its shape
+            st.goal_default = 0.65             # subtle wind-responsive give
             st.goal_spring = 0.6
             st.goal_friction = 4.0
             st.mass = 0.6
@@ -4030,6 +4064,21 @@ class AnimationSystem:
             st.pull = 0.6
             st.push = 0.6
             st.bend = 4.0
+            # Anchor the lower cushion vertices while allowing the top and
+            # side vertices to deform.  This prevents the entire cushion
+            # drifting under force fields and makes "goal-pinned" literal.
+            goal = cushion.vertex_groups.get("SOFT_GOAL")
+            if goal is None:
+                goal = cushion.vertex_groups.new(name="SOFT_GOAL")
+            zs = [v.co.z for v in cushion.data.vertices]
+            z_min, z_max = min(zs), max(zs)
+            span = max(1.0e-6, z_max - z_min)
+            for vertex in cushion.data.vertices:
+                normalized_z = (vertex.co.z - z_min) / span
+                weight = 1.0 if normalized_z < 0.2 else 0.55
+                goal.add([vertex.index], weight, 'REPLACE')
+            if hasattr(st, "vertex_group_goal"):
+                st.vertex_group_goal = goal.name
             sb.point_cache.frame_start = FRAME_START
             sb.point_cache.frame_end = FRAME_END
 
@@ -4321,8 +4370,11 @@ def configure_render():
 
     # -- volumetrics ------------------------------------------------------------
     try:
+        # Blender 5.2's step controls affect the biased ray marcher only.
+        if hasattr(cyc, "volume_biased"):
+            cyc.volume_biased = True
         cyc.volume_step_rate = 1.0
-        cyc.volume_max_steps = 64
+        cyc.volume_max_steps = 256
     except AttributeError:
         pass
 
@@ -4389,6 +4441,7 @@ class ExportManager:
             "LODs", get_or_create_collection("CoffeeShop_Environment"))
         ratios = CONFIG["lod_ratios"]
         made = 0
+        depsgraph = bpy.context.evaluated_depsgraph_get()
 
         for coll_name in self.GEO_COLLECTIONS:
             coll = bpy.data.collections.get(coll_name)
@@ -4402,13 +4455,25 @@ class ExportManager:
                 is_background = obj.name.startswith("EXT_")
                 base_name = obj.name
                 obj.name = base_name + "_LOD0"
+                # One static evaluated base can be shared by all lower LOD
+                # objects; each object receives its own Decimate modifier.
+                evaluated = obj.evaluated_get(depsgraph)
+                lod_mesh = bpy.data.meshes.new_from_object(
+                    evaluated, preserve_all_data_layers=True,
+                    depsgraph=depsgraph)
+                lod_mesh.name = f"{base_name}_LOD_Source"
 
                 for lod_i in range(1, len(ratios)):
                     ratio = ratios[lod_i] * (0.5 if is_background else 1.0)
+                    # Snapshot the evaluated source for LOD use.  Copying the
+                    # object datablock directly would also copy Cloth,
+                    # Softbody, Subdivision and other expensive modifiers,
+                    # multiplying simulations and evaluating Decimate last.
                     dup = obj.copy()
-                    dup.data = obj.data.copy()
+                    dup.data = lod_mesh
                     dup.name = f"{base_name}_LOD{lod_i}"
                     dup.animation_data_clear()
+                    dup.modifiers.clear()
                     lod_coll.objects.link(dup)
                     dec = dup.modifiers.new("LOD_Decimate", 'DECIMATE')
                     dec.ratio = max(0.02, ratio)
@@ -4459,7 +4524,13 @@ class ExportManager:
             f"<= {max_size}px.")
 
     def export_textures(self):
-        """Copy/save every real texture image into UnityExport/Textures."""
+        """
+        Save every real texture image into UnityExport/Textures.
+
+        Image.save() writes raw image-buffer values; save_render() is avoided
+        because render color management would alter albedo and, critically,
+        corrupt Non-Color roughness/metallic/normal/displacement maps.
+        """
         tex_dir = os.path.join(self.export_dir, "Textures")
         os.makedirs(tex_dir, exist_ok=True)
         exported = 0
@@ -4470,11 +4541,18 @@ class ExportManager:
             safe = "".join(c if c.isalnum() or c in "-_." else "_"
                            for c in img.name)
             path = os.path.join(tex_dir, os.path.splitext(safe)[0] + ".png")
+            original_path = img.filepath_raw
+            original_format = img.file_format
             try:
-                img.save_render(path)
+                img.filepath_raw = path
+                img.file_format = 'PNG'
+                img.save()
                 exported += 1
             except RuntimeError as exc:
                 warn(f"Could not export image {img.name}: {exc}")
+            finally:
+                img.filepath_raw = original_path
+                img.file_format = original_format
         log(f"Exported {exported} texture(s) -> {tex_dir}")
 
     # ------------------------------------------------------------------ #
@@ -4505,6 +4583,27 @@ class ExportManager:
     #  FBX / GLB
     # ------------------------------------------------------------------ #
 
+    @staticmethod
+    def _run_export_operator(operator, kwargs, label, path):
+        """
+        Invoke an exporter using only properties exposed by this Blender.
+
+        This is safer than retrying after an arbitrary TypeError, which can
+        hide an exporter implementation bug.  Operators may also return
+        CANCELLED without raising, so both the result and file are verified.
+        """
+        try:
+            supported = set(operator.get_rna_type().properties.keys())
+        except (AttributeError, RuntimeError):
+            supported = set(kwargs)
+        filtered = {key: value for key, value in kwargs.items()
+                    if key in supported}
+        result = operator(**filtered)
+        if 'FINISHED' not in result:
+            raise RuntimeError(f"{label} exporter returned {result}")
+        if not os.path.isfile(path) or os.path.getsize(path) == 0:
+            raise RuntimeError(f"{label} exporter did not create {path}")
+
     def export_fbx(self):
         """FBX export tuned for Unity (Y-up conversion, baked anim, LODs)."""
         path = os.path.join(self.export_dir, "CoffeeShop_Environment.fbx")
@@ -4517,7 +4616,9 @@ class ExportManager:
             apply_unit_scale=True,
             apply_scale_options='FBX_SCALE_ALL',   # Unity scale factor = 1
             axis_forward='-Z', axis_up='Y',
-            bake_space_transform=True,        # clean pivots in Unity
+            # Experimental bake_space_transform breaks animated transforms;
+            # ordinary axis conversion preserves pivots and animation.
+            bake_space_transform=False,
             use_triangles=False,
             bake_anim=True,
             bake_anim_use_all_bones=False,
@@ -4534,14 +4635,10 @@ class ExportManager:
             mesh_smooth_type='FACE',
         )
         try:
-            bpy.ops.export_scene.fbx(**kwargs)
-        except TypeError:
-            # Exporter signature changed: retry with the safe core args.
-            bpy.ops.export_scene.fbx(filepath=path, use_selection=True,
-                                     bake_anim=True, path_mode='COPY')
-        except AttributeError:
-            warn("FBX exporter add-on unavailable; skipped FBX.")
-            return None
+            self._run_export_operator(
+                bpy.ops.export_scene.fbx, kwargs, "FBX", path)
+        except AttributeError as exc:
+            raise RuntimeError("FBX exporter add-on unavailable") from exc
         log(f"FBX exported ({n} objects) -> {path}")
         return path
 
@@ -4560,13 +4657,10 @@ class ExportManager:
             export_yup=True,
         )
         try:
-            bpy.ops.export_scene.gltf(**kwargs)
-        except TypeError:
-            bpy.ops.export_scene.gltf(filepath=path, export_format='GLB',
-                                      use_selection=True)
-        except AttributeError:
-            warn("glTF exporter add-on unavailable; skipped GLB.")
-            return None
+            self._run_export_operator(
+                bpy.ops.export_scene.gltf, kwargs, "GLB", path)
+        except AttributeError as exc:
+            raise RuntimeError("glTF exporter add-on unavailable") from exc
         log(f"GLB exported -> {path}")
         return path
 
@@ -4600,14 +4694,14 @@ class ExportManager:
     def export_for_unity(self):
         """Full pipeline: LODs -> texture budget -> FBX + GLB + textures."""
         if not self.lods_generated:
-            run_stage("LOD generation", self.generate_lods)
-        run_stage("Texture optimization", self.optimize_textures)
+            self.generate_lods()
+        self.optimize_textures()
         if CONFIG["export_fbx"]:
-            run_stage("FBX export", self.export_fbx)
+            self.export_fbx()
         if CONFIG["export_glb"]:
-            run_stage("GLB export", self.export_glb)
-        run_stage("Texture export", self.export_textures)
-        run_stage("Unity notes", self.write_unity_readme)
+            self.export_glb()
+        self.export_textures()
+        self.write_unity_readme()
         log(f"Unity export complete -> {self.export_dir}")
         return self.export_dir
 
