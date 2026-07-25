@@ -44,7 +44,7 @@ scene.render.fps = FPS
 scene.render.resolution_x = 1920
 scene.render.resolution_y = 1080
 scene.render.resolution_percentage = 100
-scene.render.image_settings.file_format = "FFMPEG"
+scene.render.image_settings.media_type = "VIDEO"
 scene.render.ffmpeg.format = "MPEG4"
 scene.render.ffmpeg.codec = "H264"
 scene.render.filepath = "//rainy_nyc_coffee_corner.mp4"
@@ -54,7 +54,7 @@ scene.render.engine = "BLENDER_EEVEE"
 
 if hasattr(scene, "eevee"):
     scene.eevee.taa_render_samples = 96
-scene.render.image_settings.color_mode = "RGBA"
+scene.render.image_settings.color_mode = "RGB"
 scene.view_settings.look = "AgX - Medium High Contrast"
 
 
