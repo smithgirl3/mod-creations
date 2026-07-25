@@ -50,10 +50,7 @@ scene.render.ffmpeg.codec = "H264"
 scene.render.filepath = "//rainy_nyc_coffee_corner.mp4"
 scene.render.film_transparent = False
 
-try:
-    scene.render.engine = "BLENDER_EEVEE_NEXT"
-except TypeError:
-    scene.render.engine = "BLENDER_EEVEE"
+scene.render.engine = "BLENDER_EEVEE"
 
 if hasattr(scene, "eevee"):
     scene.eevee.taa_render_samples = 96
@@ -872,7 +869,7 @@ sky.sun_elevation = math.radians(11)
 sky.sun_rotation = math.radians(225)
 sky.altitude = 0.2
 sky.air_density = 1.35
-sky.dust_density = 4.0
+sky.aerosol_density = 4.0
 sky.ozone_density = 1.3
 bg.inputs["Strength"].default_value = 0.22
 wl.new(sky.outputs["Color"], bg.inputs["Color"])
@@ -926,39 +923,33 @@ aim(camera, (0.0, 3.1, 3.0))
 camera.keyframe_insert("location", frame=END)
 camera.keyframe_insert("rotation_euler", frame=END)
 
-# Compositing: subtle bloom and filmic vignette-compatible color balance.
-scene.use_nodes = True
-nodes = scene.node_tree.nodes
-links = scene.node_tree.links
-nodes.clear()
-rl = nodes.new("CompositorNodeRLayers")
-glare = nodes.new("CompositorNodeGlare")
-glare.glare_type = "FOG_GLOW"
-glare.quality = "HIGH"
-glare.threshold = 1.15
-glare.size = 7
-comp = nodes.new("CompositorNodeComposite")
-links.new(rl.outputs["Image"], glare.inputs["Image"])
-links.new(glare.outputs["Image"], comp.inputs["Image"])
-
-
 # ---------------------------------------------------------------------------
 # Cache physics, final validation, and save
 # ---------------------------------------------------------------------------
 
 scene.frame_set(START)
 
-# Bake all available point caches (awning soft bodies). Geometry Nodes rain and
-# steam are analytically looped and therefore require no disk cache.
-try:
-    bpy.context.view_layer.objects.active = next(
-        o for o in bpy.data.objects if "wind valance" in o.name
-    )
-    bpy.ops.ptcache.bake_all(bake=True)
-except (RuntimeError, StopIteration):
-    # Blender background builds can deny cache operators without a window
-    # context; deterministic keyframes remain baked in the generated .blend.
-    pass
+# Bake every awning soft-body point cache. Geometry Nodes rain and steam are
+# analytically looped and therefore require no disk cache.
+baked_caches = 0
+for obj in [o for o in bpy.data.objects if "wind valance" in o.name]:
+    soft_body = next((m for m in obj.modifiers if m.type == "SOFT_BODY"), None)
+    if soft_body is None:
+        continue
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+    try:
+        with bpy.context.temp_override(
+            scene=scene,
+            active_object=obj,
+            object=obj,
+            point_cache=soft_body.point_cache,
+        ):
+            bpy.ops.ptcache.bake(bake=True)
+        baked_caches += int(soft_body.point_cache.is_baked)
+    except RuntimeError as exc:
+        print(f"Soft-body cache warning for {obj.name}: {exc}")
+    obj.select_set(False)
 
 # Hard requirement: one and only one camera.
 cameras = [obj for obj in bpy.data.objects if obj.type == "CAMERA"]
@@ -969,6 +960,7 @@ scene["scene_description"] = "Realistic rainy NYC corner coffee shop"
 scene["weather"] = "cloudy rainstorm"
 scene["particle_systems"] = "3 rain layers, 3 steam emitters"
 scene["physics_baked_range"] = f"{START}-{END}"
+scene["soft_body_caches_baked"] = baked_caches
 scene["generator_seed"] = SEED
 
 bpy.ops.wm.save_as_mainfile(filepath="//rainy_nyc_coffee_corner.blend")
