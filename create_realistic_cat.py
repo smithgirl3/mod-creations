@@ -60,11 +60,11 @@ random.seed(4711)
 # ---------------------------------------------------------------------------
 EYE_R = 0.0098                       # eyeball radius
 EYE_POS = {                          # eye centres (recessed into the skull)
-    'L': Vector(( 0.0205, 0.2975, 0.334)),
-    'R': Vector((-0.0205, 0.2975, 0.334)),
+    'L': Vector(( 0.0195, 0.2915, 0.334)),
+    'R': Vector((-0.0195, 0.2915, 0.334)),
 }
-NOSE_POS = Vector((0.0, 0.349, 0.312))
-MOUTH_POS = Vector((0.0, 0.310, 0.286))
+NOSE_POS = Vector((0.0, 0.341, 0.310))
+MOUTH_POS = Vector((0.0, 0.306, 0.287))
 WHISKER_PAD = {                      # centre of each whisker pad
     'L': Vector(( 0.0135, 0.333, 0.302)),
     'R': Vector((-0.0135, 0.333, 0.302)),
@@ -256,26 +256,27 @@ def _metaball_anatomy():
     add((0.0, 0.315, 0.305), 0.024)           # muzzle
     add((0.0, 0.332, 0.300), 0.017)           # muzzle tip
     add((0.013, 0.331, 0.302), 0.010, True)   # whisker pad
-    add((0.0, 0.325, 0.284), 0.011)           # chin
-    add((0.0, 0.308, 0.290), 0.016)           # lower jaw
+    add((0.0, 0.325, 0.284), 0.013)           # chin
+    add((0.0, 0.318, 0.287), 0.013)           # lower lip
+    add((0.0, 0.306, 0.288), 0.018)           # lower jaw
 
     # --- forelegs (dense overlapping chain so the limb stays connected) ----
-    add((0.042, 0.090, 0.150), 0.036, True)   # upper foreleg / triceps
-    add((0.042, 0.090, 0.115), 0.031, True)
-    add((0.042, 0.092, 0.088), 0.028, True)   # forearm
-    add((0.042, 0.094, 0.062), 0.026, True)
-    add((0.042, 0.098, 0.040), 0.025, True)   # lower foreleg
-    add((0.042, 0.106, 0.022), 0.024, True)   # front paw heel
-    add((0.042, 0.122, 0.019), 0.020, True)   # front paw toes
+    add((0.042, 0.090, 0.150), 0.037, True)   # upper foreleg / triceps
+    add((0.042, 0.090, 0.115), 0.033, True)
+    add((0.042, 0.092, 0.088), 0.030, True)   # forearm
+    add((0.042, 0.094, 0.062), 0.028, True)
+    add((0.042, 0.098, 0.038), 0.027, True)   # lower foreleg
+    add((0.042, 0.106, 0.016), 0.024, True)   # front paw heel
+    add((0.042, 0.122, 0.014), 0.020, True)   # front paw toes
 
     # --- hind legs ----------------------------------------------------------
-    add((0.050, -0.172, 0.150), 0.046, True)  # thigh
-    add((0.050, -0.185, 0.115), 0.034, True)
-    add((0.050, -0.193, 0.088), 0.029, True)  # lower leg / hock
-    add((0.050, -0.196, 0.062), 0.026, True)
-    add((0.050, -0.192, 0.040), 0.024, True)  # cannon
-    add((0.050, -0.166, 0.022), 0.024, True)  # hind paw heel
-    add((0.050, -0.144, 0.019), 0.020, True)  # hind paw toes
+    add((0.050, -0.172, 0.150), 0.047, True)  # thigh
+    add((0.050, -0.185, 0.115), 0.036, True)
+    add((0.050, -0.193, 0.088), 0.031, True)  # lower leg / hock
+    add((0.050, -0.196, 0.062), 0.028, True)
+    add((0.050, -0.192, 0.038), 0.026, True)  # cannon
+    add((0.050, -0.166, 0.016), 0.024, True)  # hind paw heel
+    add((0.050, -0.144, 0.014), 0.020, True)  # hind paw toes
 
     # --- tapered tail (S-curve) --------------------------------------------
     n_seg = 11
@@ -327,9 +328,9 @@ def build_body():
     # -- eyelid rings (fused ridges around the eye sockets) ------------------
     for key in ('L', 'R'):
         pos = EYE_POS[key].copy()
-        pos.y -= 0.004
+        pos.y -= 0.0025
         bpy.ops.mesh.primitive_torus_add(
-            major_radius=0.0118, minor_radius=0.0058,
+            major_radius=0.0118, minor_radius=0.0062,
             major_segments=48, minor_segments=16,
             location=pos, rotation=(math.radians(90), 0, 0))
         parts.append(bpy.context.view_layer.objects.active)
@@ -447,7 +448,7 @@ def paint_fur_vertex_groups(body):
         length = length * (1.0 - face_fac) + 0.22 * face_fac
         # lower legs & paws short
         leg_fac = 1.0 - smoothstep(0.04, 0.14, co.z)
-        length = length * (1.0 - leg_fac) + 0.30 * leg_fac
+        length = length * (1.0 - leg_fac) + 0.45 * leg_fac
         vg_length.add([v.index], max(0.05, min(1.0, length)), 'REPLACE')
 
         # ---- whisker pad emission region -----------------------------------
@@ -477,7 +478,7 @@ def build_eyes():
                                              radius=EYE_R, location=pos)
         eye = bpy.context.view_layer.objects.active
         eye.name = f"CatEyeball.{key}"
-        eye.rotation_euler = Euler((0, 0, side * math.radians(-7)), 'XYZ')
+        eye.rotation_euler = Euler((0, 0, side * math.radians(-4)), 'XYZ')
         bpy.ops.object.shade_smooth()
         eye.data.materials.append(mat_eye)
         eyeballs.append(eye)
@@ -490,15 +491,15 @@ def build_eyes():
         cornea = bpy.context.view_layer.objects.active
         cornea.name = f"CatCornea.{key}"
         cornea.scale = (1.0, 1.12, 1.0)          # corneal bulge
-        cornea.rotation_euler = Euler((0, 0, side * math.radians(-7)), 'XYZ')
+        cornea.rotation_euler = Euler((0, 0, side * math.radians(-4)), 'XYZ')
         bpy.ops.object.shade_smooth()
         cornea.data.materials.append(mat_cornea)
         corneas.append(cornea)
 
         wpos = pos.copy()
-        wpos.y += 0.0032
-        bpy.ops.mesh.primitive_torus_add(major_radius=EYE_R * 1.04,
-                                         minor_radius=0.0011,
+        wpos.y += 0.0012
+        bpy.ops.mesh.primitive_torus_add(major_radius=EYE_R * 0.99,
+                                         minor_radius=0.0009,
                                          major_segments=48, minor_segments=12,
                                          location=wpos,
                                          rotation=(math.radians(90), 0, 0))
@@ -516,7 +517,7 @@ def build_nose():
                                           location=NOSE_POS)
     nose = bpy.context.view_layer.objects.active
     nose.name = "CatNose"
-    nose.scale = (0.0088, 0.0052, 0.0068)
+    nose.scale = (0.0078, 0.0045, 0.0058)
     nose.rotation_euler = Euler((math.radians(-18), 0, 0), 'XYZ')
     bpy.ops.object.shade_smooth()
     nose.data.materials.append(make_nose_material())
@@ -532,17 +533,17 @@ def build_mouth():
                                          radius=1.0, location=MOUTH_POS)
     cavity = bpy.context.view_layer.objects.active
     cavity.name = "CatMouthCavity"
-    cavity.scale = (0.010, 0.013, 0.0075)
+    cavity.scale = (0.008, 0.010, 0.006)
     bpy.ops.object.shade_smooth()
     cavity.data.materials.append(make_mouth_material())
     objs.append(cavity)
 
     bpy.ops.mesh.primitive_uv_sphere_add(segments=24, ring_count=16,
                                          radius=1.0,
-                                         location=(0, 0.304, 0.2865))
+                                         location=(0, 0.300, 0.2875))
     tongue = bpy.context.view_layer.objects.active
     tongue.name = "CatTongue"
-    tongue.scale = (0.0068, 0.010, 0.0034)
+    tongue.scale = (0.0060, 0.008, 0.0030)
     bpy.ops.object.shade_smooth()
     tongue.data.materials.append(make_tongue_material())
     objs.append(tongue)
@@ -586,7 +587,7 @@ def build_whiskers():
     whisker pads plus superciliary (eyebrow) whiskers, converted to mesh."""
     curve = bpy.data.curves.new("CatWhiskers", 'CURVE')
     curve.dimensions = '3D'
-    curve.bevel_depth = 0.00033
+    curve.bevel_depth = 0.00024
     curve.bevel_resolution = 4
     curve.use_fill_caps = True
     curve.resolution_u = 16
@@ -616,10 +617,10 @@ def build_whiskers():
                                pad.y - 0.005 + col * 0.0032,
                                pad.z - 0.0042 + row * 0.0042)) + jitter
                 direction = Vector((side * 1.0,
-                                    0.28 + col * 0.10 + random.uniform(-0.06, 0.06),
-                                    0.02 + (row - 1) * 0.16 + random.uniform(-0.05, 0.05)))
-                length = random.uniform(0.055, 0.088)
-                sag = -random.uniform(0.004, 0.012)
+                                    0.16 + col * 0.08 + random.uniform(-0.04, 0.04),
+                                    0.02 + (row - 1) * 0.10 + random.uniform(-0.03, 0.03)))
+                length = random.uniform(0.050, 0.080)
+                sag = -random.uniform(0.006, 0.014)
                 add_whisker(root, direction, length, sag)
 
     # superciliary (eyebrow) whiskers
@@ -912,13 +913,13 @@ def make_eyeball_material():
     angle = math_node(nt, 'ARCTAN2', Z, X, (-1200, -200))
 
     # ---- vertical slit pupil (narrow in X, tall in Z) ----------------------
-    px = math_node(nt, 'MULTIPLY', X, 5.5, (-1200, 320))
+    px = math_node(nt, 'MULTIPLY', X, 4.5, (-1200, 320))
     px2 = math_node(nt, 'MULTIPLY', px, px, (-1050, 320))
     pz2 = math_node(nt, 'MULTIPLY', Z, Z, (-1050, 440))
     pr2 = math_node(nt, 'ADD', px2, pz2, (-900, 380))
     pr = math_node(nt, 'SQRT', pr2, None, (-750, 380))
     pr_norm = math_node(nt, 'DIVIDE', pr, EYE_R, (-600, 380))
-    pupil_mask = map_range(nt, pr_norm, 0.40, 0.48, 1.0, 0.0,
+    pupil_mask = map_range(nt, pr_norm, 0.50, 0.58, 1.0, 0.0,
                            (-450, 380), interp='SMOOTHSTEP')
 
     # ---- radial iris fibers -------------------------------------------------
@@ -936,9 +937,9 @@ def make_eyeball_material():
     # ---- depth-layered iris colour (inner amber -> outer green) ------------
     iris_col, _ = color_ramp(
         nt, r_norm,
-        [(0.40, (0.85, 0.55, 0.16, 1.0)),      # amber collarette
-         (0.62, (0.55, 0.52, 0.18, 1.0)),      # hazel transition
-         (0.85, (0.28, 0.45, 0.20, 1.0))],     # green periphery
+        [(0.40, (0.38, 0.21, 0.05, 1.0)),      # amber collarette
+         (0.62, (0.20, 0.20, 0.06, 1.0)),      # hazel transition
+         (0.85, (0.08, 0.16, 0.06, 1.0))],     # green periphery
         (-450, -60))
     # fiber modulation of the iris value
     fib_centered = math_node(nt, 'SUBTRACT', fibers.outputs['Fac'], 0.5,
@@ -965,17 +966,17 @@ def make_eyeball_material():
     iris_mask = map_range(nt, r_norm, 0.90, 0.97, 1.0, 0.0,
                           (420, -420), interp='SMOOTHSTEP')
     with_sclera = mix_color(nt, iris_mask,
-                            (0.55, 0.42, 0.35, 1.0),   # dark conjunctiva rim
+                            (0.28, 0.19, 0.15, 1.0),   # dark conjunctiva rim
                             iris_final, (620, -60))
     final_col = mix_color(nt, pupil_mask, with_sclera,
                           (0.005, 0.005, 0.006, 1.0), (820, 0))
     nt.links.new(final_col, get_in(bsdf, 'Base Color'))
 
-    set_in(bsdf, 'Roughness', 0.32)
-    set_in(bsdf, 'Specular IOR Level', 0.25)
-    set_in(bsdf, 'Subsurface Weight', 0.25)
-    set_in(bsdf, 'Subsurface Radius', (0.004, 0.0018, 0.001))
-    set_in(bsdf, 'Subsurface Scale', 0.4)
+    set_in(bsdf, 'Roughness', 0.50)
+    set_in(bsdf, 'Specular IOR Level', 0.05)
+    set_in(bsdf, 'Subsurface Weight', 0.05)
+    set_in(bsdf, 'Subsurface Radius', (0.002, 0.001, 0.0008))
+    set_in(bsdf, 'Subsurface Scale', 0.3)
     set_in(bsdf, 'IOR', 1.40)
     nt.links.new(bsdf.outputs['BSDF'], out.inputs['Surface'])
 
@@ -1034,12 +1035,12 @@ def make_nose_material():
     mat, nt = fresh_material("CatNose")
     out = new_node(nt, 'ShaderNodeOutputMaterial', (600, 0))
     bsdf = new_node(nt, 'ShaderNodeBsdfPrincipled', (300, 0))
-    set_in(bsdf, 'Base Color', (0.46, 0.20, 0.17, 1.0))
+    set_in(bsdf, 'Base Color', (0.36, 0.15, 0.12, 1.0))
     set_in(bsdf, 'Roughness', 0.30)
-    set_in(bsdf, 'Subsurface Weight', 0.40)
+    set_in(bsdf, 'Subsurface Weight', 0.25)
     set_in(bsdf, 'Subsurface Radius', (0.008, 0.0035, 0.002))
     set_in(bsdf, 'Subsurface Scale', 0.6)
-    set_in(bsdf, 'Coat Weight', 0.3)           # moist sheen
+    set_in(bsdf, 'Coat Weight', 0.15)          # moist sheen
     set_in(bsdf, 'Coat Roughness', 0.12)
 
     # pebbled nose-leather texture (voronoi cells + fine noise)
@@ -1253,11 +1254,11 @@ def build_fur(body):
     # -- tactile whiskers grown from the whisker pads ------------------------
     _add_hair_system(
         body, "FurWhiskers",
-        count=26, length=0.065, material_slot=4, seed=37,
+        count=14, length=0.052, material_slot=4, seed=37,
         vg_density="WhiskerRegion",
         children=0,
-        radius_scale=0.0009, root_radius=1.0, tip_radius=0.08,
-        length_random=0.45, hair_step=6, render_step=5)
+        radius_scale=0.00045, root_radius=1.0, tip_radius=0.08,
+        length_random=0.40, hair_step=6, render_step=5)
 
 
 # ---------------------------------------------------------------------------
@@ -1343,7 +1344,7 @@ def build_camera(eye_focus):
     cam_data.sensor_width = 36.0
     cam_data.dof.use_dof = True
     cam_data.dof.focus_object = eye_focus
-    cam_data.dof.aperture_fstop = 6.0
+    cam_data.dof.aperture_fstop = 8.0
     cam_data.dof.aperture_blades = 9
     cam = bpy.data.objects.new("CatCamera", cam_data)
     cam.location = (0.95, 1.25, 0.50)
