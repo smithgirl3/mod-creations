@@ -60,16 +60,16 @@ random.seed(4711)
 # ---------------------------------------------------------------------------
 EYE_R = 0.0098                       # eyeball radius
 EYE_POS = {                          # eye centres (recessed into the skull)
-    'L': Vector(( 0.0195, 0.2915, 0.334)),
-    'R': Vector((-0.0195, 0.2915, 0.334)),
+    'L': Vector(( 0.0195, 0.257, 0.276)),
+    'R': Vector((-0.0195, 0.257, 0.276)),
 }
-NOSE_POS = Vector((0.0, 0.341, 0.310))
-MOUTH_POS = Vector((0.0, 0.306, 0.287))
+NOSE_POS = Vector((0.0, 0.291, 0.2515))
+MOUTH_POS = Vector((0.0, 0.257, 0.2315))
 WHISKER_PAD = {                      # centre of each whisker pad
-    'L': Vector(( 0.0135, 0.333, 0.302)),
-    'R': Vector((-0.0135, 0.333, 0.302)),
+    'L': Vector(( 0.0135, 0.287, 0.245)),
+    'R': Vector((-0.0135, 0.287, 0.245)),
 }
-HEAD_TARGET = Vector((0.0, 0.30, 0.33))   # camera aim point
+HEAD_TARGET = Vector((0.0, 0.24, 0.265))  # camera aim point
 
 
 # ---------------------------------------------------------------------------
@@ -237,53 +237,58 @@ def _metaball_anatomy():
         if mirror:
             E.append((Vector((-co[0], co[1], co[2])), r))
 
-    # --- torso / muscle masses -------------------------------------------
-    add((0.0,  0.085, 0.245), 0.085)          # chest & shoulder mass
-    add((0.0,  0.000, 0.238), 0.082)          # rib cage
-    add((0.0, -0.080, 0.235), 0.080)          # abdomen
-    add((0.0, -0.160, 0.232), 0.078)          # hindquarters
-    add((0.050, -0.170, 0.205), 0.055, True)  # haunch (thigh muscle bulge)
-    add((0.045,  0.090, 0.220), 0.045, True)  # deltoid / shoulder bulge
-    add((0.0,  0.045, 0.205), 0.070)          # sternum / lower chest
+    # Real-cat proportions: shoulder height ~0.26 m, deep chest, belly only
+    # ~0.10 m off the ground, short thick legs, short neck, broad head.
 
-    # --- neck & skull ------------------------------------------------------
-    add((0.0, 0.155, 0.272), 0.056)           # neck base
-    add((0.0, 0.200, 0.300), 0.048)           # upper neck
-    add((0.0, 0.235, 0.325), 0.048)           # occiput (back of skull)
-    add((0.0, 0.262, 0.332), 0.052)           # cranium
-    add((0.028, 0.285, 0.315), 0.026, True)   # cheek (zygomatic) volume
-    add((0.020, 0.292, 0.351), 0.016, True)   # brow ridge
-    add((0.0, 0.315, 0.305), 0.024)           # muzzle
-    add((0.0, 0.332, 0.300), 0.017)           # muzzle tip
-    add((0.013, 0.331, 0.302), 0.010, True)   # whisker pad
-    add((0.0, 0.325, 0.284), 0.013)           # chin
-    add((0.0, 0.318, 0.287), 0.013)           # lower lip
-    add((0.0, 0.306, 0.288), 0.018)           # lower jaw
+    # --- torso / muscle masses (long and low-slung) -------------------------
+    add((0.0,  0.090, 0.195), 0.088)          # chest & shoulder mass
+    add((0.0,  0.010, 0.185), 0.086)          # rib cage
+    add((0.0, -0.070, 0.180), 0.084)          # abdomen
+    add((0.0, -0.150, 0.185), 0.085)          # hindquarters
+    add((0.050, -0.160, 0.160), 0.060, True)  # haunch (thigh muscle bulge)
+    add((0.045,  0.085, 0.190), 0.050, True)  # deltoid / shoulder bulge
+    add((0.0,  0.045, 0.150), 0.070)          # sternum / lower chest
 
-    # --- forelegs (dense overlapping chain so the limb stays connected) ----
-    add((0.042, 0.090, 0.150), 0.037, True)   # upper foreleg / triceps
-    add((0.042, 0.090, 0.115), 0.033, True)
-    add((0.042, 0.092, 0.088), 0.030, True)   # forearm
-    add((0.042, 0.094, 0.062), 0.028, True)
-    add((0.042, 0.098, 0.038), 0.027, True)   # lower foreleg
-    add((0.042, 0.106, 0.016), 0.024, True)   # front paw heel
-    add((0.042, 0.122, 0.014), 0.020, True)   # front paw toes
+    # --- short thick neck & broad skull -------------------------------------
+    add((0.0, 0.140, 0.220), 0.058)           # neck base
+    add((0.0, 0.170, 0.245), 0.052)           # upper neck
+    add((0.0, 0.195, 0.263), 0.050)           # occiput (back of skull)
+    add((0.0, 0.225, 0.270), 0.055)           # cranium
+    add((0.030, 0.247, 0.255), 0.028, True)   # cheek (zygomatic) volume
+    add((0.021, 0.253, 0.292), 0.017, True)   # brow ridge
+    add((0.0, 0.272, 0.247), 0.024)           # muzzle (short)
+    add((0.0, 0.286, 0.243), 0.016)           # muzzle tip
+    add((0.013, 0.285, 0.245), 0.010, True)   # whisker pad
+    add((0.0, 0.279, 0.228), 0.013)           # chin
+    add((0.0, 0.272, 0.231), 0.013)           # lower lip
+    add((0.0, 0.262, 0.232), 0.018)           # lower jaw
+    add((0.0, 0.243, 0.234), 0.024)           # throat (behind the jaw)
+    add((0.0, 0.215, 0.238), 0.034)           # upper throat / neck blend
 
-    # --- hind legs ----------------------------------------------------------
-    add((0.050, -0.172, 0.150), 0.047, True)  # thigh
-    add((0.050, -0.185, 0.115), 0.036, True)
-    add((0.050, -0.193, 0.088), 0.031, True)  # lower leg / hock
-    add((0.050, -0.196, 0.062), 0.028, True)
-    add((0.050, -0.192, 0.038), 0.026, True)  # cannon
-    add((0.050, -0.166, 0.016), 0.024, True)  # hind paw heel
-    add((0.050, -0.144, 0.014), 0.020, True)  # hind paw toes
+    # --- forelegs: short & sturdy, elbows buried in the chest fur ----------
+    add((0.042, 0.085, 0.120), 0.037, True)   # upper foreleg / triceps
+    add((0.042, 0.086, 0.095), 0.032, True)
+    add((0.042, 0.088, 0.070), 0.029, True)   # forearm
+    add((0.042, 0.090, 0.050), 0.027, True)
+    add((0.042, 0.094, 0.033), 0.026, True)   # lower foreleg
+    add((0.042, 0.100, 0.014), 0.024, True)   # front paw heel
+    add((0.042, 0.115, 0.012), 0.020, True)   # front paw toes
 
-    # --- tapered tail (S-curve) --------------------------------------------
+    # --- hind legs: massive thigh, low hock ---------------------------------
+    add((0.050, -0.155, 0.130), 0.050, True)  # thigh
+    add((0.050, -0.165, 0.100), 0.040, True)
+    add((0.050, -0.170, 0.075), 0.032, True)  # lower leg / hock
+    add((0.050, -0.172, 0.052), 0.028, True)
+    add((0.050, -0.168, 0.033), 0.025, True)  # cannon
+    add((0.050, -0.150, 0.014), 0.024, True)  # hind paw heel
+    add((0.050, -0.130, 0.012), 0.020, True)  # hind paw toes
+
+    # --- tapered tail (S-curve) ----------------------------------------------
     n_seg = 11
     for i in range(n_seg):
         t = i / (n_seg - 1)
-        y = -0.235 - 0.285 * t
-        z = 0.225 - 0.095 * t + 0.130 * t * t
+        y = -0.215 - 0.285 * t
+        z = 0.175 - 0.075 * t + 0.115 * t * t
         x = 0.012 * math.sin(t * math.pi * 1.5)
         r = 0.0205 * (1.0 - 0.62 * t) + 0.004
         add((x, y, z), r)
@@ -316,8 +321,8 @@ def build_body():
     parts = []
     for side in (1, -1):
         bpy.ops.mesh.primitive_cone_add(
-            vertices=48, radius1=0.023, radius2=0.0015, depth=0.058,
-            location=(side * 0.031, 0.243, 0.392))
+            vertices=48, radius1=0.019, radius2=0.0015, depth=0.046,
+            location=(side * 0.030, 0.206, 0.322))
         ear = bpy.context.view_layer.objects.active
         ear.scale = (1.0, 0.42, 1.0)                    # flatten front-back
         ear.rotation_euler = Euler((math.radians(-12),
@@ -326,6 +331,8 @@ def build_body():
         parts.append(ear)
 
     # -- eyelid rings (fused ridges around the eye sockets) ------------------
+    # Squashed vertically so the lids overlap the eyeball into an almond
+    # shaped aperture instead of exposing the full sphere.
     for key in ('L', 'R'):
         pos = EYE_POS[key].copy()
         pos.y -= 0.0025
@@ -333,7 +340,9 @@ def build_body():
             major_radius=0.0118, minor_radius=0.0062,
             major_segments=48, minor_segments=16,
             location=pos, rotation=(math.radians(90), 0, 0))
-        parts.append(bpy.context.view_layer.objects.active)
+        lid = bpy.context.view_layer.objects.active
+        lid.scale = (1.12, 0.78, 1.0)     # local z is world y after rotation
+        parts.append(lid)
 
     select_only([body] + parts)
     bpy.context.view_layer.objects.active = body
@@ -426,7 +435,7 @@ def paint_fur_vertex_groups(body):
         # ---- density: bald around eyes, nose leather, lips, paw soles -----
         w = 1.0
         d_eye = min((co - eye_l).length, (co - eye_r).length)
-        w *= smoothstep(0.010, 0.016, d_eye)
+        w *= smoothstep(0.009, 0.013, d_eye)
         d_nose = (co - NOSE_POS).length
         w *= 0.12 + 0.88 * smoothstep(0.006, 0.013, d_nose)
         d_mouth = (co - MOUTH_POS).length
@@ -438,16 +447,16 @@ def paint_fur_vertex_groups(body):
         # ---- length: plush torso & tail, short face and lower legs --------
         length = 0.55
         # torso
-        if -0.24 < co.y < 0.16 and co.z > 0.12:
+        if -0.21 < co.y < 0.13 and co.z > 0.09:
             length = 0.95
         # tail gets bushy
-        if co.y < -0.25:
+        if co.y < -0.22:
             length = 1.0
         # face shortens toward the muzzle
-        face_fac = smoothstep(0.20, 0.32, co.y)
+        face_fac = smoothstep(0.15, 0.26, co.y)
         length = length * (1.0 - face_fac) + 0.22 * face_fac
         # lower legs & paws short
-        leg_fac = 1.0 - smoothstep(0.04, 0.14, co.z)
+        leg_fac = 1.0 - smoothstep(0.03, 0.10, co.z)
         length = length * (1.0 - leg_fac) + 0.45 * leg_fac
         vg_length.add([v.index], max(0.05, min(1.0, length)), 'REPLACE')
 
@@ -517,7 +526,7 @@ def build_nose():
                                           location=NOSE_POS)
     nose = bpy.context.view_layer.objects.active
     nose.name = "CatNose"
-    nose.scale = (0.0078, 0.0045, 0.0058)
+    nose.scale = (0.0072, 0.0042, 0.0052)
     nose.rotation_euler = Euler((math.radians(-18), 0, 0), 'XYZ')
     bpy.ops.object.shade_smooth()
     nose.data.materials.append(make_nose_material())
@@ -533,42 +542,43 @@ def build_mouth():
                                          radius=1.0, location=MOUTH_POS)
     cavity = bpy.context.view_layer.objects.active
     cavity.name = "CatMouthCavity"
-    cavity.scale = (0.008, 0.010, 0.006)
+    cavity.scale = (0.007, 0.009, 0.005)
     bpy.ops.object.shade_smooth()
     cavity.data.materials.append(make_mouth_material())
     objs.append(cavity)
 
-    bpy.ops.mesh.primitive_uv_sphere_add(segments=24, ring_count=16,
-                                         radius=1.0,
-                                         location=(0, 0.300, 0.2875))
+    bpy.ops.mesh.primitive_uv_sphere_add(
+        segments=24, ring_count=16, radius=1.0,
+        location=MOUTH_POS + Vector((0, -0.004, 0.0005)))
     tongue = bpy.context.view_layer.objects.active
     tongue.name = "CatTongue"
-    tongue.scale = (0.0060, 0.008, 0.0030)
+    tongue.scale = (0.0055, 0.006, 0.0028)
     bpy.ops.object.shade_smooth()
     tongue.data.materials.append(make_tongue_material())
     objs.append(tongue)
 
     teeth_parts = []
     mat_teeth = make_teeth_material()
-    # upper canines (point down) and lower canines (point up)
+    # upper canines (point down) and lower canines (point up), placed
+    # relative to the mouth centre
     for side in (1, -1):
-        for z, rot_x, y in ((0.2925, math.radians(180), 0.3210),
-                            (0.2825, 0.0, 0.3190)):
-            bpy.ops.mesh.primitive_cone_add(vertices=16, radius1=0.0021,
-                                            radius2=0.0002, depth=0.0105,
-                                            location=(side * 0.0085, y, z),
-                                            rotation=(rot_x, 0, 0))
+        for dz, rot_x, dy in ((0.0080, math.radians(180), 0.009),
+                              (-0.0010, 0.0, 0.008)):
+            bpy.ops.mesh.primitive_cone_add(
+                vertices=16, radius1=0.0018, radius2=0.0002, depth=0.006,
+                location=MOUTH_POS + Vector((side * 0.0075, dy, dz)),
+                rotation=(rot_x, 0, 0))
             tooth = bpy.context.view_layer.objects.active
             bpy.ops.object.shade_smooth()
             teeth_parts.append(tooth)
     # incisor rows
     for i in range(6):
         x = (i - 2.5) * 0.0022
-        for z, rot_x in ((0.2895, math.radians(180)), (0.2820, 0.0)):
-            bpy.ops.mesh.primitive_cone_add(vertices=10, radius1=0.0009,
-                                            radius2=0.0002, depth=0.0038,
-                                            location=(x, 0.3235, z + 0.002),
-                                            rotation=(rot_x, 0, 0))
+        for dz, rot_x in ((0.0045, math.radians(180)), (-0.0005, 0.0)):
+            bpy.ops.mesh.primitive_cone_add(
+                vertices=10, radius1=0.0009, radius2=0.0002, depth=0.0038,
+                location=MOUTH_POS + Vector((x, 0.011, dz)),
+                rotation=(rot_x, 0, 0))
             tooth = bpy.context.view_layer.objects.active
             bpy.ops.object.shade_smooth()
             teeth_parts.append(tooth)
@@ -705,9 +715,9 @@ def make_skin_material():
     nt.links.new(geo.outputs['Position'], sep.inputs['Vector'])
 
     # belly / chest lightening (low z, but above the paws)
-    belly_lo = map_range(nt, sep.outputs['Z'], 0.10, 0.22, 1.0, 0.0,
+    belly_lo = map_range(nt, sep.outputs['Z'], 0.055, 0.16, 1.0, 0.0,
                          (-900, -180), interp='SMOOTHSTEP')
-    belly_hi = map_range(nt, sep.outputs['Z'], 0.02, 0.09, 0.0, 1.0,
+    belly_hi = map_range(nt, sep.outputs['Z'], 0.012, 0.05, 0.0, 1.0,
                          (-900, -340), interp='SMOOTHSTEP')
     belly_mask = math_node(nt, 'MULTIPLY', belly_lo, belly_hi, (-700, -250))
     belly_fac = math_node(nt, 'MULTIPLY', belly_mask, 0.55, (-560, -250))
@@ -721,7 +731,7 @@ def make_skin_material():
                          (0.30, 0.13, 0.11, 1.0), (-160, 160))
 
     # subtle warm flush around the nose/muzzle
-    muzzle_mask = map_range(nt, sep.outputs['Y'], 0.30, 0.345, 0.0, 1.0,
+    muzzle_mask = map_range(nt, sep.outputs['Y'], 0.255, 0.30, 0.0, 1.0,
                             (-900, -660), interp='SMOOTHSTEP')
     muzzle_fac = math_node(nt, 'MULTIPLY', muzzle_mask, 0.35, (-700, -660))
     skin_col = mix_color(nt, muzzle_fac, skin_col,
@@ -762,7 +772,7 @@ def make_skin_material():
     nt.links.new(bump2.outputs['Normal'], get_in(bsdf, 'Normal'))
 
     # ear translucency (light through the pinna)
-    ear_mask = map_range(nt, sep.outputs['Z'], 0.395, 0.435, 0.0, 1.0,
+    ear_mask = map_range(nt, sep.outputs['Z'], 0.30, 0.335, 0.0, 1.0,
                          (200, -400), interp='SMOOTHSTEP')
     ear_fac = math_node(nt, 'MULTIPLY', ear_mask, 0.45, (380, -400))
     transl = new_node(nt, 'ShaderNodeBsdfTranslucent', (400, -560))
@@ -1035,7 +1045,7 @@ def make_nose_material():
     mat, nt = fresh_material("CatNose")
     out = new_node(nt, 'ShaderNodeOutputMaterial', (600, 0))
     bsdf = new_node(nt, 'ShaderNodeBsdfPrincipled', (300, 0))
-    set_in(bsdf, 'Base Color', (0.36, 0.15, 0.12, 1.0))
+    set_in(bsdf, 'Base Color', (0.30, 0.12, 0.10, 1.0))
     set_in(bsdf, 'Roughness', 0.30)
     set_in(bsdf, 'Subsurface Weight', 0.25)
     set_in(bsdf, 'Subsurface Radius', (0.008, 0.0035, 0.002))
@@ -1316,7 +1326,7 @@ def build_lights():
     rim = bpy.data.objects.new("RimLight", rim_data)
     rim.location = (-0.65, -0.85, 0.85)
     bpy.context.collection.objects.link(rim)
-    point_at(rim, (0.0, -0.05, 0.28))
+    point_at(rim, (0.0, -0.05, 0.22))
 
     # broad dim fill to open the shadows
     fill_data = bpy.data.lights.new("FillLight", 'AREA')
@@ -1347,9 +1357,9 @@ def build_camera(eye_focus):
     cam_data.dof.aperture_fstop = 8.0
     cam_data.dof.aperture_blades = 9
     cam = bpy.data.objects.new("CatCamera", cam_data)
-    cam.location = (0.95, 1.25, 0.50)
+    cam.location = (0.90, 1.02, 0.38)
     bpy.context.collection.objects.link(cam)
-    point_at(cam, (0.0, 0.16, 0.28))           # frame the whole cat
+    point_at(cam, (0.0, 0.05, 0.19))           # frame the whole cat
     bpy.context.scene.camera = cam
     return cam
 
