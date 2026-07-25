@@ -53,11 +53,19 @@ scene.render.ffmpeg.format = "MPEG4"
 scene.render.ffmpeg.codec = "H264"
 scene.render.filepath = str(OUTPUT_DIR / "rainy_nyc_coffee_corner.mp4")
 scene.render.film_transparent = False
+scene.render.use_motion_blur = True
+scene.render.motion_blur_shutter = 0.42
 
 scene.render.engine = "BLENDER_EEVEE"
 
 if hasattr(scene, "eevee"):
     scene.eevee.taa_render_samples = 96
+    scene.eevee.motion_blur_steps = 6
+    scene.eevee.motion_blur_max = 96
+    scene.eevee.use_raytracing = True
+    scene.eevee.ray_tracing_method = "SCREEN"
+    scene.eevee.ray_tracing_options.screen_trace_quality = .75
+    scene.eevee.ray_tracing_options.trace_max_roughness = .72
 scene.render.image_settings.color_mode = "RGB"
 scene.view_settings.look = "AgX - Medium High Contrast"
 
@@ -179,6 +187,24 @@ def curve_obj(name, points, bevel_depth, mat, col, cyclic=False):
     return obj
 
 
+def prism_from_footprint(name, footprint, z_min, z_max, mat, col, bevel_width=0.0):
+    """Create a watertight architectural prism from a real plan footprint."""
+    count = len(footprint)
+    verts = [(x, y, z_min) for x, y in footprint] + [(x, y, z_max) for x, y in footprint]
+    faces = [tuple(reversed(range(count))), tuple(range(count, count * 2))]
+    for i in range(count):
+        j = (i + 1) % count
+        faces.append((i, j, count + j, count + i))
+    mesh = bpy.data.meshes.new(name + " Mesh")
+    mesh.from_pydata(verts, [], faces)
+    mesh.materials.append(mat)
+    obj = bpy.data.objects.new(name, mesh)
+    col.objects.link(obj)
+    if bevel_width:
+        bevel(obj, bevel_width, 4)
+    return obj
+
+
 def text_obj(name, body, loc, size, mat, col, rotation=(math.radians(90), 0, 0),
              align="CENTER", extrude=0.035):
     data = bpy.data.curves.new(name + "_Text", "FONT")
@@ -261,13 +287,97 @@ def noisy_pbr(name, base, roughness, noise_scale, bump_strength, metallic=0.0):
     return mat
 
 
+def brick_pbr():
+    """True running-bond masonry with recessed mortar, age variation, and wetness."""
+    mat = principled_material("Aged NYC running-bond brick", (.22, .045, .025, 1), .52)
+    nodes, links = mat.node_tree.nodes, mat.node_tree.links
+    bsdf = nodes.get("Principled BSDF")
+    texcoord = nodes.new("ShaderNodeTexCoord")
+    mapping = nodes.new("ShaderNodeMapping")
+    mapping.inputs["Scale"].default_value = (1.0, 1.0, 1.0)
+    bricks = nodes.new("ShaderNodeTexBrick")
+    bricks.offset = 0.5
+    bricks.offset_frequency = 2
+    bricks.squash = 1.0
+    bricks.inputs["Color1"].default_value = (.28, .055, .025, 1)
+    bricks.inputs["Color2"].default_value = (.095, .014, .008, 1)
+    bricks.inputs["Mortar"].default_value = (.15, .13, .105, 1)
+    bricks.inputs["Scale"].default_value = 13.0
+    bricks.inputs["Mortar Size"].default_value = .018
+    bricks.inputs["Mortar Smooth"].default_value = .008
+    bricks.inputs["Brick Width"].default_value = .72
+    bricks.inputs["Row Height"].default_value = .24
+    age = nodes.new("ShaderNodeTexNoise")
+    age.inputs["Scale"].default_value = 3.2
+    age.inputs["Detail"].default_value = 7.0
+    age.inputs["Roughness"].default_value = .8
+    mix = nodes.new("ShaderNodeMixRGB")
+    mix.blend_type = "MULTIPLY"
+    mix.inputs[0].default_value = .28
+    bump = nodes.new("ShaderNodeBump")
+    bump.inputs["Strength"].default_value = .48
+    bump.inputs["Distance"].default_value = .065
+    rough_ramp = nodes.new("ShaderNodeValToRGB")
+    rough_ramp.color_ramp.elements[0].position = .30
+    rough_ramp.color_ramp.elements[0].color = (.18, .18, .18, 1)
+    rough_ramp.color_ramp.elements[1].position = .72
+    rough_ramp.color_ramp.elements[1].color = (.58, .58, .58, 1)
+    links.new(texcoord.outputs["Generated"], mapping.inputs["Vector"])
+    links.new(mapping.outputs["Vector"], bricks.inputs["Vector"])
+    links.new(mapping.outputs["Vector"], age.inputs["Vector"])
+    links.new(bricks.outputs["Color"], mix.inputs[1])
+    links.new(age.outputs["Fac"], mix.inputs[2])
+    links.new(mix.outputs["Color"], bsdf.inputs["Base Color"])
+    links.new(bricks.outputs["Fac"], bump.inputs["Height"])
+    links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+    links.new(age.outputs["Fac"], rough_ramp.inputs["Fac"])
+    links.new(rough_ramp.outputs["Color"], bsdf.inputs["Roughness"])
+    return mat
+
+
+def wet_ground_pbr(name, base, aggregate_scale):
+    """Layer macro wet patches over fine mineral aggregate and micro-normal detail."""
+    mat = principled_material(name, base, .24)
+    nodes, links = mat.node_tree.nodes, mat.node_tree.links
+    bsdf = nodes.get("Principled BSDF")
+    coord = nodes.new("ShaderNodeTexCoord")
+    fine = nodes.new("ShaderNodeTexNoise")
+    fine.inputs["Scale"].default_value = aggregate_scale
+    fine.inputs["Detail"].default_value = 9.0
+    fine.inputs["Roughness"].default_value = .75
+    broad = nodes.new("ShaderNodeTexNoise")
+    broad.inputs["Scale"].default_value = 2.1
+    broad.inputs["Detail"].default_value = 4.0
+    broad.inputs["Roughness"].default_value = .82
+    color_ramp = nodes.new("ShaderNodeValToRGB")
+    color_ramp.color_ramp.elements[0].color = tuple(c * .38 for c in base[:3]) + (1,)
+    color_ramp.color_ramp.elements[1].color = tuple(min(1, c * 1.45) for c in base[:3]) + (1,)
+    rough = nodes.new("ShaderNodeValToRGB")
+    rough.color_ramp.elements[0].position = .32
+    rough.color_ramp.elements[0].color = (.055, .055, .055, 1)
+    rough.color_ramp.elements[1].position = .68
+    rough.color_ramp.elements[1].color = (.42, .42, .42, 1)
+    bump = nodes.new("ShaderNodeBump")
+    bump.inputs["Strength"].default_value = .22
+    bump.inputs["Distance"].default_value = .035
+    links.new(coord.outputs["Generated"], fine.inputs["Vector"])
+    links.new(coord.outputs["Generated"], broad.inputs["Vector"])
+    links.new(fine.outputs["Fac"], color_ramp.inputs["Fac"])
+    links.new(color_ramp.outputs["Color"], bsdf.inputs["Base Color"])
+    links.new(broad.outputs["Fac"], rough.inputs["Fac"])
+    links.new(rough.outputs["Color"], bsdf.inputs["Roughness"])
+    links.new(fine.outputs["Fac"], bump.inputs["Height"])
+    links.new(bump.outputs["Normal"], bsdf.inputs["Normal"])
+    return mat
+
+
 # ---------------------------------------------------------------------------
 # Physically based materials
 # ---------------------------------------------------------------------------
 
-asphalt = noisy_pbr("Wet asphalt", (0.018, 0.024, 0.03, 1), 0.15, 7.5, 0.32)
-concrete = noisy_pbr("Wet concrete", (0.31, 0.34, 0.36, 1), 0.3, 5.0, 0.18)
-brick = noisy_pbr("Aged red brick", (0.25, 0.055, 0.035, 1), 0.48, 8.0, 0.3)
+asphalt = wet_ground_pbr("Rain-soaked asphalt aggregate", (.021, .026, .029, 1), 48.0)
+concrete = wet_ground_pbr("Rain-soaked sidewalk concrete", (.30, .315, .32, 1), 22.0)
+brick = brick_pbr()
 stone = noisy_pbr("Dark facade stone", (0.045, 0.052, 0.058, 1), 0.24, 10, 0.18)
 white = principled_material("Painted white", (0.78, 0.79, 0.78, 1), 0.34)
 black = principled_material("Black enamel", (0.012, 0.015, 0.018, 1), 0.22, 0.55)
@@ -289,6 +399,7 @@ sign_mat = principled_material(
 awning_mat = principled_material("Striped awning green", (0.035, 0.16, 0.11, 1), 0.48)
 awning_cream = principled_material("Striped awning cream", (0.72, 0.62, 0.43, 1), 0.48)
 wood = noisy_pbr("Dark cafe wood", (0.13, 0.055, 0.018, 1), 0.4, 4.5, 0.13)
+bark = noisy_pbr("Rain-dark plane tree bark", (.12, .072, .038, 1), .62, 7.5, .42)
 ceramic = principled_material("Ivory ceramic", (0.73, 0.68, 0.56, 1), 0.2)
 terracotta = noisy_pbr("Terracotta", (0.38, 0.105, 0.04, 1), 0.47, 5, 0.15)
 leaf_mats = [
@@ -296,6 +407,11 @@ leaf_mats = [
     principled_material("Leaf rainlit", (0.045, 0.20, 0.055, 1), 0.38),
     principled_material("Leaf olive", (0.10, 0.18, 0.035, 1), 0.43),
 ]
+for leaf_mat in leaf_mats:
+    leaf_bsdf = leaf_mat.node_tree.nodes.get("Principled BSDF")
+    if "Subsurface Weight" in leaf_bsdf.inputs:
+        leaf_bsdf.inputs["Subsurface Weight"].default_value = .075
+    leaf_bsdf.inputs["IOR"].default_value = 1.42
 flower_mat = principled_material("Cafe flowers", (0.62, 0.025, 0.045, 1), 0.33)
 yellow = principled_material("NYC taxi yellow", (0.72, 0.32, 0.015, 1), 0.2, 0.2)
 navy = principled_material("Parked car navy", (0.015, 0.045, 0.09, 1), 0.18, 0.35)
@@ -303,9 +419,13 @@ van_white = principled_material("Delivery van", (0.48, 0.51, 0.52, 1), 0.24, 0.1
 red = principled_material("Tail lamp", (0.45, 0.003, 0.001, 1), 0.13,
                           emission=(1, 0.002, 0, 1), emission_strength=2)
 road_paint = principled_material("Wet road paint", (0.72, 0.72, 0.66, 1), 0.24)
-water = principled_material("Puddle water", (0.018, 0.035, 0.045, 1), 0.035, 0, 0.55, alpha=0.84)
-rain_mat = principled_material("Rain streak", (0.22, 0.42, 0.58, 1), 0.06, 0, 0.25,
-                               emission=(0.12, 0.25, 0.38, 1), emission_strength=0.2, alpha=0.62)
+water = principled_material("Puddle water", (0.018, 0.035, 0.045, 1), 0.025, 0, 0.92, alpha=0.88)
+water.node_tree.nodes.get("Principled BSDF").inputs["IOR"].default_value = 1.333
+rain_mat = principled_material("Physical rainwater", (.82, .91, 1.0, 1), .012, 0, 1.0)
+rain_bsdf = rain_mat.node_tree.nodes.get("Principled BSDF")
+rain_bsdf.inputs["IOR"].default_value = 1.333
+if "Coat Weight" in rain_bsdf.inputs:
+    rain_bsdf.inputs["Coat Weight"].default_value = .08
 steam_mat = principled_material("Steam", (0.68, 0.72, 0.75, 1), 0.75, alpha=0.16)
 
 
@@ -369,14 +489,30 @@ for idx, (x, y, sx, sy) in enumerate(puddles):
 # Coffee shop architecture and facade details
 # ---------------------------------------------------------------------------
 
-# Corner building shell and upper floors.
-cube("Coffee shop building", (1.5, 8.1, 5.5), (9.4, 5.4, 5.5), brick, COL["Architecture"], 0.12)
+# Corner building shell follows a chamfered NYC lot line instead of a box.
+building_footprint = [
+    (-6.75, 2.70), (10.90, 2.70), (10.90, 13.50),
+    (-7.90, 13.50), (-7.90, 3.85),
+]
+prism_from_footprint(
+    "Chamfered masonry corner building", building_footprint, .18, 11.0,
+    brick, COL["Architecture"], .055
+)
 cube("Ground floor stone facade", (1.5, 3.05, 2.25), (9.45, 0.35, 2.25),
      stone, COL["Architecture"], 0.05)
 cube("Side ground facade", (-7.58, 8.0, 2.25), (0.35, 5.1, 2.25),
      stone, COL["Architecture"], 0.05)
 cube("Roof cornice", (1.5, 8.0, 11.0), (9.8, 5.55, 0.28), stone, COL["Architecture"], 0.12)
 cube("Shop fascia", (1.0, 2.63, 4.55), (8.7, 0.16, 0.55), wood, COL["Architecture"], 0.04)
+# Cast-stone belt courses, pilasters, and rain-darkened foundation establish scale.
+for z, depth in ((5.08, .11), (7.82, .08), (10.55, .13)):
+    cube(f"Facade belt course {z}", (1.6, 2.57, z), (9.15, depth, .095),
+         stone, COL["Architecture"], .025)
+for x in (-7.05, -3.55, -.05, 3.45, 6.95, 10.45):
+    cube(f"Ground-floor pilaster {x}", (x, 2.56, 2.28), (.16, .16, 2.18),
+         stone, COL["Architecture"], .035)
+cube("Rain-dark foundation", (1.5, 2.62, .48), (9.25, .18, .30),
+     stone, COL["Architecture"], .025)
 
 # Front windows, mullions, interior silhouettes, and door.
 window_centers = [-5.4, -1.55, 5.25]
@@ -401,10 +537,33 @@ for floor, z in enumerate((6.6, 9.1)):
     for x in (-5.2, -1.7, 1.8, 5.3):
         cube(f"Upper window {floor} {x}", (x, 2.66, z), (1.05, 0.06, 0.86),
              glass, COL["Architecture"], 0.025)
+        # Deep jambs and lintels give realistic masonry opening thickness.
+        for dx in (-1.12, 1.12):
+            cube(f"Upper stone jamb {floor} {x} {dx}", (x + dx, 2.54, z),
+                 (.075, .14, .92), stone, COL["Architecture"], .018)
+        cube(f"Upper lintel {floor} {x}", (x, 2.52, z + .96), (1.2, .16, .11),
+             stone, COL["Architecture"], .025)
         cube(f"Upper sill {floor} {x}", (x, 2.51, z - 0.93), (1.17, 0.16, 0.08),
              stone, COL["Architecture"])
         cube(f"Upper mullion {floor} {x}", (x, 2.55, z), (0.035, 0.07, 0.8),
              black, COL["Details"])
+        cube(f"Upper transom {floor} {x}", (x, 2.54, z + .22), (1.0, .07, .032),
+             black, COL["Details"])
+
+# Side elevation windows and functional copper downspout.
+for floor, z in enumerate((6.6, 9.1)):
+    for y in (5.3, 8.3, 11.3):
+        win = cube(f"Side elevation window {floor} {y}", (-7.93, y, z),
+                   (.055, .78, .84), glass, COL["Architecture"], .025)
+        for dy in (-.86, .86):
+            cube(f"Side window jamb {floor} {y} {dy}", (-8.02, y + dy, z),
+                 (.11, .07, .92), stone, COL["Architecture"], .02)
+        cube(f"Side window lintel {floor} {y}", (-8.04, y, z + .94),
+             (.13, .94, .10), stone, COL["Architecture"], .02)
+cylinder("Copper rain downspout", (10.57, 2.45, 5.25), .055, 10.25,
+         bronze, COL["Details"], 16)
+curve_obj("Downspout shoe", [(10.57, 2.45, .35), (10.57, 2.30, .18), (10.40, 2.10, .13)],
+          .057, bronze, COL["Details"])
 for z in (5.65, 8.12):
     cube(f"Fire escape platform {z}", (4.5, 2.02, z), (3.2, 0.72, 0.08),
          metal, COL["Architecture"])
@@ -588,24 +747,62 @@ for i, (x, y) in enumerate(((-4.8, 0.95), (-0.9, 0.92), (4.15, 0.95))):
 # Landscaping: planters, shrubs, street trees, and wind animation
 # ---------------------------------------------------------------------------
 
-def leaf_cluster(name, loc, scale=1.0):
+def tapered_branch(name, start, end, radius_start, radius_end, mat=bark):
+    start, end = Vector(start), Vector(end)
+    direction = end - start
+    bpy.ops.mesh.primitive_cone_add(
+        vertices=14, radius1=radius_start, radius2=radius_end,
+        depth=direction.length, location=(start + end) * .5
+    )
+    obj = bpy.context.object
+    obj.name = name
+    obj.rotation_euler = direction.to_track_quat("Z", "Y").to_euler()
+    obj.data.materials.append(mat)
+    move_to_collection(obj, COL["Landscaping"])
+    bevel(obj, min(radius_end, radius_start) * .22, 2)
+    return obj
+
+
+def botanical_leaf(name, loc, length, width, direction, mat):
+    """Create a pointed, slightly folded broadleaf with a raised midrib."""
+    verts = [
+        (0, 0, 0), (-width * .55, length * .28, 0),
+        (-width * .48, length * .65, 0), (0, length, .018),
+        (width * .48, length * .65, 0), (width * .55, length * .28, 0),
+        (0, length * .46, .035),
+    ]
+    faces = [(0, 1, 6), (1, 2, 6), (2, 3, 6), (3, 4, 6), (4, 5, 6), (5, 0, 6)]
+    mesh = bpy.data.meshes.new(name + " Mesh")
+    mesh.from_pydata(verts, [], faces)
+    mesh.materials.append(mat)
+    leaf = bpy.data.objects.new(name, mesh)
+    COL["Landscaping"].objects.link(leaf)
+    leaf.location = loc
+    outward = Vector(direction).normalized()
+    leaf.rotation_euler = outward.to_track_quat("Z", "Y").to_euler()
+    solid = leaf.modifiers.new("Leaf thickness", "SOLIDIFY")
+    solid.thickness = .006
+    bevel(leaf, .006, 2)
+    return leaf
+
+
+def leaf_cluster(name, loc, scale=1.0, count=42):
     root = bpy.data.objects.new(name, None)
     COL["Landscaping"].objects.link(root)
     root.location = loc
-    for i in range(24):
-        v = Vector((random.uniform(-1, 1), random.uniform(-1, 1), random.uniform(-.5, 1)))
+    for i in range(count):
+        v = Vector((random.uniform(-1, 1), random.uniform(-1, 1), random.uniform(-.35, 1)))
         if v.length < 0.2:
             v.z += 0.5
         v.normalize()
-        pos = v * random.uniform(0.35, 0.9) * scale
-        leaf = sphere(
-            f"{name} leaf {i}", pos, (
-                random.uniform(.13, .28) * scale,
-                random.uniform(.06, .13) * scale,
-                random.uniform(.10, .22) * scale
-            ), random.choice(leaf_mats), COL["Landscaping"], 12, 6
+        pos = v * random.uniform(0.28, 1.0) * scale
+        leaf = botanical_leaf(
+            f"{name} leaf {i}", pos,
+            random.uniform(.18, .34) * scale,
+            random.uniform(.08, .16) * scale,
+            v + Vector((random.uniform(-.25, .25), random.uniform(-.25, .25), 0)),
+            random.choice(leaf_mats)
         )
-        leaf.rotation_euler = (random.random(), random.random(), random.random())
         leaf.parent = root
     return root
 
@@ -639,20 +836,37 @@ def tree(name, x, y, height=5.5):
     root = bpy.data.objects.new(name, None)
     COL["Landscaping"].objects.link(root)
     root.location = (x, y, 0.2)
-    trunk = cylinder(name + " trunk", (0, 0, height * .38), .23, height * .76,
-                     wood, COL["Landscaping"], 16)
+    trunk = tapered_branch(name + " tapered trunk", (0, 0, 0), (0, 0, height * .70),
+                           .31, .13)
     trunk.parent = root
-    crown = leaf_cluster(name + " crown", (0, 0, height * .78), 1.65)
-    crown.parent = root
-    for a in range(5):
-        angle = a * math.tau / 5
-        branch = cylinder(
-            name + f" branch {a}",
-            (math.cos(angle) * .35, math.sin(angle) * .35, height * .62),
-            .065, 1.8, wood, COL["Landscaping"], 10,
-            (math.radians(50), 0, angle)
+    # Irregular scaffold branches and separate foliage masses avoid a spherical canopy.
+    for a in range(7):
+        angle = a * math.tau / 7 + random.uniform(-.22, .22)
+        start_z = height * random.uniform(.43, .66)
+        reach = random.uniform(1.0, 1.75)
+        end = (
+            math.cos(angle) * reach,
+            math.sin(angle) * reach,
+            height * random.uniform(.72, .98),
+        )
+        branch = tapered_branch(
+            name + f" scaffold branch {a}", (0, 0, start_z), end,
+            random.uniform(.085, .13), .025
         )
         branch.parent = root
+        crown = leaf_cluster(
+            name + f" foliage mass {a}", end,
+            random.uniform(.62, .92), random.randint(18, 28)
+        )
+        crown.parent = root
+        # A finer secondary twig extends beyond each main branch.
+        twig_end = Vector(end) + Vector((
+            math.cos(angle) * .55, math.sin(angle) * .55, random.uniform(.2, .55)
+        ))
+        twig = tapered_branch(
+            name + f" secondary twig {a}", end, twig_end, .032, .009
+        )
+        twig.parent = root
     # Root sway is a baked, deterministic response matching the wind field.
     for frame, rx, ry in ((START, -1.1, -1.8), (58, 1.5, 2.4), (118, -.8, -2.1),
                           (177, 1.0, 1.7), (END, -1.1, -1.8)):
@@ -690,49 +904,138 @@ wind.field.keyframe_insert("strength", frame=END)
 # ---------------------------------------------------------------------------
 
 def vehicle(name, loc, color, length=4.6, width=1.85, height=1.45, taxi=False, van=False):
-    x, y, z = loc
     root = bpy.data.objects.new(name, None)
     COL["Vehicles"].objects.link(root)
     root.location = loc
-    body = cube(name + " body", (0, 0, .68), (length / 2, width / 2, .48),
-                color, COL["Vehicles"], .24)
+
+    # Loft a continuous automotive shell through longitudinal cross-sections.
+    half_l, half_w = length * .5, width * .5
+    if van:
+        sections = [
+            (-1.0, .82, .72), (-.91, 1.0, 1.85), (-.70, 1.0, 2.02),
+            (.62, 1.0, 2.02), (.82, .97, 1.78), (1.0, .84, .78),
+        ]
+    else:
+        sections = [
+            (-1.0, .74, .62), (-.87, .98, .83), (-.58, 1.0, .91),
+            (-.36, .96, 1.38), (.28, .94, 1.48), (.57, .97, .92),
+            (.86, .96, .82), (1.0, .72, .66),
+        ]
+    rings = []
+    verts = []
+    for sx, width_factor, roof_z in sections:
+        w = half_w * width_factor
+        shoulder = roof_z if van else min(roof_z, .98)
+        roof_half = w * (.82 if van else .55)
+        ring = [
+            (sx * half_l, -w, .34),
+            (sx * half_l, -w, shoulder),
+            (sx * half_l, -roof_half, roof_z),
+            (sx * half_l, roof_half, roof_z),
+            (sx * half_l, w, shoulder),
+            (sx * half_l, w, .34),
+        ]
+        rings.append(list(range(len(verts), len(verts) + len(ring))))
+        verts.extend(ring)
+    faces = []
+    for i in range(len(rings) - 1):
+        for j in range(6):
+            k = (j + 1) % 6
+            faces.append((rings[i][j], rings[i + 1][j], rings[i + 1][k], rings[i][k]))
+    faces.extend((tuple(reversed(rings[0])), tuple(rings[-1])))
+    mesh = bpy.data.meshes.new(name + " Body Shell")
+    mesh.from_pydata(verts, [], faces)
+    mesh.materials.append(color)
+    body = bpy.data.objects.new(name + " sculpted body", mesh)
+    COL["Vehicles"].objects.link(body)
     body.parent = root
-    cabin_scale = (length * (.34 if van else .26), width * .43, height * (.42 if van else .32))
-    cabin = cube(name + " cabin", ((-.25 if van else .15), 0, 1.28), cabin_scale,
-                 color, COL["Vehicles"], .18)
-    cabin.parent = root
-    # Dark windows on all visible sides.
-    windshield = cube(name + " windshield", (length * .23, 0, 1.35),
-                      (.035, width * .38, .32), glass, COL["Vehicles"], .03)
-    windshield.rotation_euler.y = math.radians(-12)
+    bevel(body, .11 if van else .16, 5)
+    smooth(body)
+
+    # Glazing sits just above the shell and follows believable windshield angles.
+    windshield_x = length * (.61 if van else .30)
+    windshield = cube(name + " laminated windshield", (windshield_x, 0, 1.43 if not van else 1.42),
+                      (.035, width * .40, .42 if not van else .56),
+                      glass, COL["Vehicles"], .025)
+    windshield.rotation_euler.y = math.radians(-18 if not van else -8)
     windshield.parent = root
+    rear_window = cube(name + " rear glass", (-length * (.42 if van else .35), 0, 1.38),
+                       (.032, width * .37, .34 if not van else .52),
+                       glass, COL["Vehicles"], .02)
+    rear_window.rotation_euler.y = math.radians(19 if not van else 2)
+    rear_window.parent = root
     for side in (-1, 1):
-        sw = cube(name + f" side windows {side}", (0, side * (width / 2 + .015), 1.37),
-                  (length * .22, .025, .30), glass, COL["Vehicles"], .035)
-        sw.parent = root
+        window_y = side * (half_w + .012)
+        if van:
+            positions = (-1.05, .55)
+            widths = (.72, .70)
+            z_window = 1.42
+            window_h = .48
+        else:
+            positions = (-.62, .56)
+            widths = (.62, .58)
+            z_window = 1.31
+            window_h = .31
+        for wi, (wx, ww) in enumerate(zip(positions, widths)):
+            sw = cube(name + f" side window {side} {wi}", (wx, window_y, z_window),
+                      (ww, .018, window_h), glass, COL["Vehicles"], .055)
+            sw.parent = root
+        mirror = cube(name + f" wing mirror {side}", (length * .27, side * (half_w + .16), 1.15),
+                      (.18, .12, .09), color, COL["Vehicles"], .07)
+        mirror.parent = root
+
+    # Real tire sidewalls, alloy hubs, brake discs, and paired axles.
     for axle in (-length * .31, length * .31):
         for side in (-1, 1):
-            wheel = cylinder(name + f" wheel {axle} {side}", (axle, side * width / 2, .48),
-                             .38, .22, black, COL["Vehicles"], 24,
-                             (math.radians(90), 0, 0))
-            wheel.parent = root
-            hub = cylinder(name + f" hub {axle} {side}", (axle, side * (width / 2 + .12), .48),
-                           .17, .025, metal, COL["Vehicles"], 18,
+            tire = torus(name + f" tire {axle} {side}", (axle, side * half_w, .43),
+                         .29, .105, black, COL["Vehicles"], (math.radians(90), 0, 0))
+            tire.parent = root
+            hub = cylinder(name + f" alloy wheel {axle} {side}",
+                           (axle, side * (half_w + .115), .43),
+                           .205, .035, metal, COL["Vehicles"], 24,
                            (math.radians(90), 0, 0))
             hub.parent = root
+            for spoke in range(5):
+                angle = spoke * math.tau / 5
+                spoke_obj = cube(
+                    name + f" wheel spoke {axle} {side} {spoke}",
+                    (axle + math.cos(angle) * .075, side * (half_w + .137),
+                     .43 + math.sin(angle) * .075),
+                    (.14, .012, .025), metal, COL["Details"], .012
+                )
+                spoke_obj.rotation_euler.y = -angle
+                spoke_obj.parent = root
+
+    # Bumpers, grille, number plate, lights, door handles, and panel gaps.
+    cube(name + " front lower grille", (half_l + .018, 0, .49),
+         (.026, half_w * .50, .16), black, COL["Vehicles"], .035).parent = root
+    cube(name + " front bumper", (half_l + .028, 0, .34),
+         (.035, half_w * .82, .07), color, COL["Vehicles"], .03).parent = root
+    cube(name + " rear bumper", (-half_l - .028, 0, .35),
+         (.035, half_w * .80, .065), color, COL["Vehicles"], .03).parent = root
+    plate = cube(name + " license plate", (half_l + .055, 0, .54),
+                 (.016, .25, .075), white, COL["Details"], .012)
+    plate.parent = root
     for side in (-.58, .58):
-        lamp = sphere(name + f" headlight {side}", (length / 2 + .02, side, .78),
-                      (.055, .18, .12), warm_light_mat, COL["Vehicles"], 16, 8)
+        lamp = sphere(name + f" projector headlight {side}", (half_l + .035, side, .73),
+                      (.045, .20, .115), warm_light_mat, COL["Vehicles"], 20, 10)
         lamp.parent = root
-        tail = sphere(name + f" tail light {side}", (-length / 2 - .02, side, .76),
-                      (.055, .15, .11), red, COL["Vehicles"], 16, 8)
+        tail = sphere(name + f" tail light {side}", (-half_l - .035, side, .74),
+                      (.042, .18, .12), red, COL["Vehicles"], 20, 10)
         tail.parent = root
+    for side in (-1, 1):
+        for hx in (-.55, .55):
+            handle = cube(name + f" door handle {side} {hx}",
+                          (hx, side * (half_w + .035), 1.02),
+                          (.14, .025, .025), metal, COL["Details"], .018)
+            handle.parent = root
     if taxi:
-        roof = cube(name + " taxi roof light", (0, 0, 1.93), (.42, .18, .14),
+        roof = cube(name + " taxi roof light", (0, 0, 1.64), (.42, .18, .14),
                     warm_light_mat, COL["Vehicles"], .06)
         roof.parent = root
-        text_obj(name + " taxi number", "NYC", (0, -width / 2 - .04, 1.02), .23,
-                 black, COL["Details"], rotation=(math.radians(90), 0, 0))
+        medallion = text_obj(name + " taxi medallion", "NYC  T", (.1, -half_w - .045, .95), .22,
+                            black, COL["Details"], rotation=(math.radians(90), 0, 0))
+        medallion.parent = root
     return root
 
 
@@ -824,9 +1127,16 @@ def rain_particle_layer(name, count, z_offset, speed_frames):
     emitter["particle_system"] = "rain"
     emitter["particle_count"] = count
     emitter["baked_loop_frames"] = speed_frames
-    source = cylinder(name + " raindrop source", (0, 0, 0), .012, .42,
-                      rain_mat, COL["Weather"], 6)
-    source.rotation_euler = (math.radians(-7), math.radians(4), 0)
+    # A real airborne drop is nearly spherical; camera motion blur creates its
+    # photographed streak. The previous long cylinder impostors are not used.
+    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2, radius=.0052, location=(0, 0, 0))
+    source = bpy.context.object
+    source.name = name + " physical water droplet"
+    source.scale = (1.0, 1.0, 1.12)
+    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+    source.data.materials.append(rain_mat)
+    smooth(source)
+    move_to_collection(source, COL["Weather"])
     source.hide_render = True
     source.hide_viewport = True
 
