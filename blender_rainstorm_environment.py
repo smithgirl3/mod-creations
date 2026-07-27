@@ -1322,6 +1322,9 @@ def create_rain_system(collections: dict) -> dict[str, Any]:
     set_gn_modifier_input(mod, id_wind, WIND_STRENGTH)
     set_gn_modifier_input(mod, id_dmin, DROP_SIZE_MIN)
     set_gn_modifier_input(mod, id_dmax, DROP_SIZE_MAX)
+    set_gn_modifier_input(mod, find_socket_identifier(ng, "Area Size"), GROUND_SIZE)
+    set_gn_modifier_input(mod, find_socket_identifier(ng, "Height"), RAIN_VOLUME_HEIGHT)
+    set_gn_modifier_input(mod, find_socket_identifier(ng, "Fall Speed"), 18.0)
 
     # --- Secondary near-camera particle streak layer ---
     bpy.ops.mesh.primitive_plane_add(
@@ -1348,7 +1351,6 @@ def create_rain_system(collections: dict) -> dict[str, Any]:
     settings.lifetime_random = 0.4
     settings.emit_from = "FACE"
     settings.normal_factor = 0.0
-    settings.factor_gravity = 1.15
     settings.brownian_factor = 0.05
     settings.damping = 0.02
     settings.particle_size = (DROP_SIZE_MIN + DROP_SIZE_MAX) * 0.5
@@ -1358,9 +1360,9 @@ def create_rain_system(collections: dict) -> dict[str, Any]:
     settings.use_scale_instance = True
     settings.use_rotations = True
     settings.rotation_mode = "VEL"
-    # Wind influence
+    # Gravity + wind (factor_gravity removed in Blender 5.x)
     settings.effector_weights.wind = 1.0
-    settings.effector_weights.gravity = 1.0
+    settings.effector_weights.gravity = 1.15
     settings.effector_weights.turbulence = 0.8
 
     # Layered density: third distant sheet
@@ -1384,7 +1386,6 @@ def create_rain_system(collections: dict) -> dict[str, Any]:
     s2.frame_end = FRAME_END
     s2.lifetime = 40
     s2.lifetime_random = 0.5
-    s2.factor_gravity = 1.2
     s2.particle_size = DROP_SIZE_MIN * 0.8
     s2.size_random = 0.6
     s2.render_type = "OBJECT"
@@ -1393,6 +1394,7 @@ def create_rain_system(collections: dict) -> dict[str, Any]:
     s2.use_rotations = True
     s2.rotation_mode = "VEL"
     s2.effector_weights.wind = 1.0
+    s2.effector_weights.gravity = 1.2
     s2.effector_weights.turbulence = 1.0
 
     _log(f"Rain system ready — GN instances≈{count:,} + particle layers.")
@@ -1683,13 +1685,13 @@ def create_splash_system(collections: dict) -> dict[str, Any]:
     st.emit_from = "FACE"
     st.normal_factor = 1.8 * SPLASH_SCALE
     st.factor_random = 0.6
-    st.factor_gravity = 1.0
     st.particle_size = 0.02 * SPLASH_SCALE
     st.size_random = 0.7
     st.render_type = "OBJECT"
     st.instance_object = droplet
     st.use_scale_instance = True
     st.effector_weights.wind = 0.4
+    st.effector_weights.gravity = 1.0
     st.effector_weights.turbulence = 0.6
 
     _log(f"Splash system ready — {count:,} procedural hits + physics bounce layer.")
